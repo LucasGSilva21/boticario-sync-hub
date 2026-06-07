@@ -1,53 +1,36 @@
 # DEVELOPMENT_GUIDE.md
 
-# Objetivo
+## Objetivo
 
-Este documento define as diretrizes de implementação do projeto `boticario-sync-hub`.
+Define as diretrizes de implementação do projeto `boticario-sync-hub`. Garante consistência entre as camadas do backend e serve como referência para geração de código por ferramentas de IA e desenvolvimento manual.
 
-Seu objetivo é garantir consistência entre backend, frontend e infraestrutura, reduzindo ambiguidades durante a geração de código por ferramentas de IA (GitHub Copilot) e durante o desenvolvimento manual.
+**Em caso de conflito, `ARCHITECTURE.md` tem prioridade absoluta.**
 
-Todas as implementações devem respeitar as definições descritas em:
-```text
-/docs/ARCHITECTURE.md
+---
+
+## Stack Tecnológica
+
+| Camada | Tecnologia |
+|---|---|
+| Runtime | Node.js LTS |
+| Linguagem | TypeScript (strict mode) |
+| Testes | Jest |
+| Lambdas | Serverless Framework + serverless-plugin-typescript |
+| Worker (ECS) | Executado via script `package.json` |
+| Infra Serverless | Serverless Framework |
+| Infra Long-Lived | Terraform |
+
+### Restrições Críticas
+
+- **Proibido:** Express, NestJS, Fastify, Hapi ou qualquer framework web.
+- **Proibido:** Frameworks de injeção de dependência (Inversify, TSyringe etc.). DI é feita manualmente via Factories.
+- **Obrigatório:** AWS SDK v3 (`@aws-sdk/client-*`). Nunca usar v2.
+
+---
+
+## Estrutura do Monorepo
+
 ```
-Em caso de conflito entre documentos, o **`ARCHITECTURE.md` possui prioridade absoluta.**
-
----
-
-# Stack Tecnológica
-
-## Backend
-* **Runtime:** Node.js (Versão LTS)
-* **Linguagem:** TypeScript (Modo Estrito / Strict Mode)
-
-### Restrições Críticas do Backend
-* **Não utilizar Express, NestJS, Fastify ou Hapi.**
-* **Não utilizar frameworks de Injeção de Dependência** (Inversão de dependência deve ser feita manualmente via construtores e Factories).
-* **Priorizar APIs nativas do Node.js** (Roteamento HTTP da Lambda de Demissões é resolvido nativamente via API Gateway + Serverless Framework).
-
----
-
-## Frontend
-* **Framework/Bundler:** React + Vite
-* **Linguagem:** TypeScript
-* **Estilização:** Tailwind CSS
-
----
-
-## Testes
-* **Framework:** Jest
-
----
-
-## Infraestrutura
-* **Serverless Framework:** Responsável por provisionar recursos Serverless (Lambda Functions, API Gateway, SQS, S3, DynamoDB).
-* **Terraform:** Responsável por provisionar infraestrutura corporativa/long-lived (ECS Fargate, IAM Roles, Networking/VPC).
-
----
-
-# Estrutura do Monorepo
-
-```text
 /boticario-sync-hub
 ├── /backend
 ├── /frontend
@@ -57,131 +40,465 @@ Em caso de conflito entre documentos, o **`ARCHITECTURE.md` possui prioridade ab
 
 ---
 
-# Backend
+## Estrutura do Backend (`/backend/src`)
 
-## Estrutura de Diretórios (`/backend`)
-
-```text
-/backend
+```
+src/
+├── config/               # Variáveis de ambiente (único ponto de acesso ao process.env)
+│   └── env.ts
 │
-├── src
-│   ├── types
-│   ├── functions
-│   ├── workers
-│   ├── services
-│   ├── providers
-│   ├── repositories
-│   ├── factories
-│   └── utils
+├── types/                # DTOs, enums e eventos de domínio compartilhados
+│   ├── employee.types.ts
+│   └── sync-state.types.ts
 │
-├── tests
-│   ├── unit
-│   │   ├── services
-│   │   └── providers
-│   │
-│   └── integration
-│       ├── dispatcher
-│       └── ingestion
+├── functions/            # Entrypoints das AWS Lambdas (handlers finos)
+│   ├── employeeIngestion.ts
+│   └── immediateTermination.ts
 │
-├── package.json
-├── tsconfig.json
-└── jest.config.ts
+├── workers/              # Entrypoints do ECS Fargate (main finos)
+│   └── dispatcher/
+│       └── main.ts
+│
+├── services/             # Regras de negócio (dependem apenas de interfaces)
+│   ├── xmlProcessingService.ts
+│   ├── dispatcherService.ts
+│   └── idempotencyService.ts
+│
+├── providers/            # Implementações de I/O externo (AWS SDK, HTTP)
+│   ├── interfaces/
+│   │   ├── IBucketProvider.ts
+│   │   ├── IQueueProvider.ts
+│   │   ├── ISecretProvider.ts
+│   │   ├── ISaaSClient.ts
+│   │   └── IXmlParser.ts
+│   ├── S3BucketProvider.ts
+│   ├── SqsQueueProvider.ts
+│   ├── SecretsManagerSecretProvider.ts
+│   ├── SaaSHttpClient.ts
+│   └── FastXmlParser.ts
+│
+├── repositories/         # Camada de persistência (DynamoDB)
+│   ├── interfaces/
+│   │   └── ISyncStateRepository.ts
+│   └── DynamoSyncStateRepository.ts
+│
+├── factories/            # Montagem e injeção de dependências (um por entrypoint)
+│   ├── makeIngestionHandler.ts
+│   ├── makeTerminationHandler.ts
+│   └── makeDispatcherWorker.ts
+│
+└── utils/                # Utilitários transversais sem regra de negócio
+    ├── logger.ts
+    ├── hashGenerator.ts
+    └── sleep.ts
 ```
 
 ---
 
-## Camadas do Sistema e Responsabilidades
+## Responsabilidades por Camada
 
-### 1. Types
-* **Responsabilidade:** Centralizar DTOs, interfaces, enums e tipos compartilhados (`EmployeeDto`, `TerminationDto`, `EmployeeEvent`, `ProcessingStatus`, `FlowType`).
-* **Regra:** Não deve conter nenhuma lógica de execução, apenas assinaturas de tipos.
+### `config/`
 
-### 2. Functions
-* **Responsabilidade:** Pontos de entrada (*handlers*) das AWS Lambdas (`EmployeeIngestionService`, `ImmediateTerminationService`).
-* **Regra:** Contém apenas o código de acoplamento com o runtime da AWS (bootstrap). Não devem conter regras de negócio. Devem invocar os respectivos *Services*.
+**Único local permitido para acessar `process.env`.**
 
-### 3. Workers
-* **Responsabilidade:** Ponto de entrada do processo contínuo no ECS Fargate (`SaaSIntegrationDispatcher`).
-* **Regra:** Gerencia o loop infinito de consumo do SQS (`while(true)`). Não concentra regras de negócio. Invoca os *Services* apropriados e gerencia o ritmo do polling com base no estado de saúde do sistema.
+Valida e exporta todas as variáveis de ambiente em tempo de inicialização. Qualquer variável ausente deve lançar erro imediatamente, antes da aplicação subir.
 
-### 4. Services
-* **Responsabilidade:** Implementar o núcleo das regras de negócio e fluxos coordenados (`IdempotencyService`, `DispatcherService`, `XmlProcessingService`).
-* **Regra:** Services podem orquestrar *Providers* e *Repositories*, mas devem ser totalmente agnósticos a detalhes de infraestrutura (ex: não sabem como fazer uma chamada HTTP ou query bruta no DynamoDB).
+```typescript
+// src/config/env.ts
+function requireEnv(key: string): string {
+  const value = process.env[key];
+  if (!value) throw new Error(`Missing required environment variable: ${key}`);
+  return value;
+}
 
-### 5. Providers
-* **Responsabilidade:** Encapsular toda e qualquer comunicação externa ou IO com APIs, SDKs e serviços AWS (`SaaSProvider`, `SecretsManagerProvider`, `SqsProvider`, `XmlParserProvider`).
-* **Regra:** Toda biblioteca externa ou chamada de rede deve ficar restrita a um Provider.
+export const env = {
+  saasRateLimitPerSecond: parseInt(requireEnv('SAAS_RATE_LIMIT_PER_SECOND'), 10),
+  processingLockTimeoutSeconds: parseInt(requireEnv('PROCESSING_LOCK_TIMEOUT_SECONDS'), 10),
+  secretsCacheTtlSeconds: parseInt(requireEnv('SECRETS_CACHE_TTL_SECONDS'), 10),
+  circuitBreakerResetTimeoutSeconds: parseInt(requireEnv('CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS'), 10),
+  employeeTerminationQueueUrl: requireEnv('EMPLOYEE_TERMINATION_QUEUE_URL'),
+  employeeUpsertQueueUrl: requireEnv('EMPLOYEE_UPSERT_QUEUE_URL'),
+  dynamoTableName: requireEnv('DYNAMO_TABLE_NAME'),
+  saasSecretName: requireEnv('SAAS_SECRET_NAME'),
+} as const;
+```
 
-### 6. Repositories
-* **Responsabilidade:** Abstrair a camada de persistência de dados.
-* **Regra:** Nenhum *Service* acessa o DynamoDB diretamente. Toda persistência do estado de sincronização deve ocorrer chamando métodos do `EmployeeSyncStateRepository`.
-
-### 7. Factories
-* **Responsabilidade:** Construção centralizada de instâncias e amarração de dependências (`makeDispatcherService()`, `makeSaaSProvider()`).
-* **Regra:** Garante a inversão de dependência manual sem frameworks, facilitando a substituição por mocks nos testes.
-
-### 8. Utils
-* **Responsabilidade:** Códigos utilitários transversais puramente técnicos (`Logger` estruturado, `HashGenerator`, `DateProvider`). Não contêm regras de negócio.
+**Regra:** Nenhum outro arquivo importa `process.env` diretamente. Todos importam de `config/env.ts`.
 
 ---
 
-# Regras de Implementação Críticas
+### `types/`
 
-## 1. Controle de Vazão (Rate Limit do SaaS)
-* O controle estrito de **100 requisições por segundo** deve ser implementado no `SaaSProvider` utilizando a biblioteca **`bottleneck`**.
-* Configuração via variável de ambiente: `SAAS_RATE_LIMIT_PER_SECOND=100`.
+DTOs, enums e tipos de eventos de domínio compartilhados entre camadas.
 
-## 2. Circuit Breaker e Gestão do Loop do Worker
-* O Circuit Breaker deve gerenciar os estados `Closed`, `Open` e `Half-Open`.
-* **Acoplamento de Resiliência:** A instância do Circuit Breaker deve ser criada de forma global (via Factory) e compartilhada/injetada tanto no `SaaSProvider` (para registrar as falhas/sucessos) quanto no Worker (`SaaSIntegrationDispatcher`).
-* **Gerenciamento do Polling (Sem Busy-Wait):** O Worker executará em um loop contínuo nativo. Para preservar recursos de CPU e evitar chamadas desnecessárias à AWS:
-    * Se o Circuit Breaker estiver no estado **`OPEN`**, o Worker deve suspender o polling do SQS aplicando um `sleep` assíncrono nativo (via `Promise` + `setTimeout`) equivalente ao tempo de `CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS`.
-    * Se o SQS retornar um lote vazio (sem mensagens nas duas filas), o loop deve aplicar um `sleep` de 5 segundos antes de tentar um novo `ReceiveMessage`.
+Não contém lógica de execução — apenas assinaturas de tipos.
 
-## 3. Priorização de Filas no Worker
-* Como o SQS Standard não possui priorização nativa entre filas distintas, o Worker deve fazer a priorização programaticamente:
-    * A cada ciclo do loop, o Worker deve tentar consumir primeiro da fila `employee-termination-queue`.
-    * Somente se o retorno dessa chamada vier vazio (sem demissões pendentes), o Worker poderá efetuará o polling na fila batch `employee-upsert-queue`.
-
-## 4. Idempotência (Zero-Read Pattern)
-* Toda validação de duplicidade e controle de concorrência concorrente deve utilizar **operações condicionais do DynamoDB** através do `EmployeeSyncStateRepository`.
-* **Proibido realizar leituras prévias (`GetItem`)** para checar se o registro existe antes de tentar inserir.
-* As chaves da tabela `EmployeeSyncState` serão obrigatoriamente: `PK = employeeId` e `SK = eventHash`.
-* **Máquina de Estados de Sincronização:**
-    * Bloquear e descartar se o status for `COMPLETED`.
-    * Bloquear se o status for `PROCESSING` com `lockExpiresAt` válido (concorrência ativa).
-    * Permitir reprocessamento se o status for `FAILED` ou se o status for `PROCESSING` com `lockExpiresAt` já expirado (recuperação de evento órfão).
-
-## 5. Parsing de XML de Alta Volumetria
-* A leitura de arquivos XML de 30.000 registros na Lambda de ingestão deve utilizar Streams para manter complexidade de memória constante $O(1)$.
-* **Biblioteca obrigatória:** `fast-xml-parser`.
-* **Justificativa de Mercado:** É a biblioteca padrão do ecossistema Node.js moderno para alta performance e suporte nativo a parsing orientado a eventos (SAX), ideal para ler pedaços do arquivo do S3 e postar no SQS imediatamente sem estourar a memória RAM da Lambda.
-
-## 6. Logs Estruturados
-* Toda tentativa de envio ao SaaS deve emitir um log estruturado em formato JSON para o stdout (capturado pelo CloudWatch Logs).
-* **Campos mínimos obrigatórios:** `timestamp`, `employeeId`, `flow` (`UPSERT` ou `TERMINATION`) e `status` (`SUCCESS` ou `ERROR`). Logs de erro devem conter o campo descritivo `error`.
+```typescript
+// Exemplos de tipos centralizados aqui:
+// EmployeeUpsertEvent, TerminationEvent, ProcessingStatus, FlowType, SyncState
+```
 
 ---
 
-# Diretrizes para os Testes Unitários e Mocks (Jest)
+### `functions/` — Entrypoints das Lambdas
 
-* **Mocks Determinísticos:** Para testar o comportamento do Circuit Breaker, do Bottleneck e da política de Retry de forma confiável e sem gerar *flaky tests* (testes instáveis), o `MockSaaSProvider` deve expor métodos de controle manual de estado para o ambiente do Jest (ex: método `forceFailure(count, statusCode)`). 
-* **Proibido** o uso de falhas baseadas em cálculos probabilísticos ou aleatórios nos testes unitários.
+Arquivo fino que exporta o handler AWS. Não contém regra de negócio.
+
+Responsabilidades:
+1. Chamar o Factory correspondente para montar a árvore de dependências.
+2. Extrair os dados do evento AWS e delegar para o Service.
+3. Tratar erros e retornar a resposta correta ao API Gateway (quando aplicável).
+
+```typescript
+// src/functions/immediateTermination.ts
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { makeTerminationHandler } from '../factories/makeTerminationHandler';
+
+const service = makeTerminationHandler(); // instanciado fora do handler (warm start)
+
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  return service.handle(event);
+};
+```
+
+```typescript
+// src/functions/employeeIngestion.ts
+import type { S3Event } from 'aws-lambda';
+import { makeIngestionHandler } from '../factories/makeIngestionHandler';
+
+const service = makeIngestionHandler();
+
+export const handler = async (event: S3Event): Promise<void> => {
+  await service.handle(event);
+};
+```
+
+**Referência no `serverless.yml`:**
+```yaml
+functions:
+  employeeIngestion:
+    handler: src/functions/employeeIngestion.handler
+  immediateTermination:
+    handler: src/functions/immediateTermination.handler
+```
 
 ---
 
-# Frontend (Dashboard de Monitoramento)
+### `workers/dispatcher/main.ts` — Entrypoint do Worker
 
-* **Escopo:** Exclusivamente demonstrativo e em tela única.
-* **Restrição:** Nenhuma chamada HTTP real ou comunicação com o backend deve ser implementada.
-* Todos os dados exibidos nos Cards de Métricas (Total de Sucessos / Total de Erros) e na tabela de logs devem ser consumidos de uma massa de dados estática estruturada na pasta `/frontend/src/mocks`.
+Arquivo fino que inicializa o worker do ECS Fargate. Não contém regra de negócio.
+
+Responsabilidades:
+1. Chamar o Factory correspondente.
+2. Chamar `worker.start()`.
+
+```typescript
+// src/workers/dispatcher/main.ts
+import { makeDispatcherWorker } from '../../factories/makeDispatcherWorker';
+
+void (async (): Promise<void> => {
+  const worker = makeDispatcherWorker();
+  await worker.start();
+})();
+```
+
+**Script no `package.json`:**
+```json
+{
+  "scripts": {
+    "start:dispatcher": "ts-node src/workers/dispatcher/main.ts"
+  }
+}
+```
 
 ---
 
-# Diretrizes Técnicas de Escrita de Código (Para o Desenvolvedor e Copilot)
+### `services/` — Regras de Negócio
 
-* Utilize TypeScript estrito (`strict: true`).
-* **Proibido o uso do tipo `any`.** Caso um tipo seja dinâmico ou desconhecido, utilize `unknown`.
-* Defina explicitamente os tipos de retorno de todas as funções, métodos e handlers.
-* Utilize a versão moderna do **AWS SDK v3** (`@aws-sdk/client-sqs`, `@aws-sdk/client-dynamodb`). Não utilizar a antiga v2.
-* Siga o padrão de injeção de dependência via construtor em todas as classes de Service, Repository e Provider.
+Implementam a lógica central de negócio. São **totalmente agnósticos a infraestrutura**.
+
+Regras:
+- Recebem dependências **exclusivamente via interfaces** no construtor.
+- Não importam nenhuma implementação concreta de Provider ou Repository.
+- Não acessam `process.env` diretamente — recebem configurações via construtor se necessário.
+
+```typescript
+// Exemplo de assinatura correta
+class DispatcherService {
+  constructor(
+    private readonly idempotency: IIdempotencyService,
+    private readonly saasClient: ISaaSClient,
+    private readonly logger: ILogger,
+  ) {}
+}
+```
+
+---
+
+### `providers/` — Comunicação Externa e I/O
+
+Encapsulam toda comunicação com AWS SDK, HTTP e bibliotecas externas.
+
+Regras:
+- Cada Provider implementa uma interface com **nome de domínio** (sem referência à tecnologia).
+- A interface vive em `providers/interfaces/`.
+- A implementação concreta fica diretamente em `providers/`.
+
+#### Tabela de Mapeamento Interface → Implementação
+
+| Interface | Implementação Concreta | Tecnologia Subjacente |
+|---|---|---|
+| `IBucketProvider` | `S3BucketProvider` | AWS S3 SDK v3 |
+| `IQueueProvider` | `SqsQueueProvider` | AWS SQS SDK v3 |
+| `ISecretProvider` | `SecretsManagerSecretProvider` | AWS Secrets Manager SDK v3 |
+| `ISaaSClient` | `SaaSHttpClient` | `fetch` nativo + `bottleneck` |
+| `IXmlParser` | `FastXmlParser` | `fast-xml-parser` |
+
+#### Exemplo de interface (sem nome de tecnologia)
+
+```typescript
+// src/providers/interfaces/IQueueProvider.ts
+export interface IQueueMessage {
+  body: string;
+  receiptHandle: string;
+}
+
+export interface IQueueProvider {
+  receiveMessages(queueUrl: string, maxMessages: number): Promise<IQueueMessage[]>;
+  sendMessage(queueUrl: string, body: string): Promise<void>;
+  deleteMessage(queueUrl: string, receiptHandle: string): Promise<void>;
+}
+```
+
+---
+
+### `repositories/` — Persistência
+
+Abstraem toda interação com DynamoDB. Nenhum Service acessa o DynamoDB diretamente.
+
+```typescript
+// src/repositories/interfaces/ISyncStateRepository.ts
+
+export type AcquireResult =
+  | { acquired: true }
+  | { acquired: false; reason: 'ALREADY_COMPLETED' | 'LOCK_ACTIVE' };
+
+export interface ISyncStateRepository {
+  /**
+   * Tenta registrar o evento como PROCESSING via Conditional Write (Zero-Read Pattern).
+   * Retorna false se o evento já estiver COMPLETED ou PROCESSING com lock válido.
+   */
+  tryAcquireProcessing(employeeId: string, eventHash: string, lockExpiresAt: Date): Promise<AcquireResult>;
+
+  markCompleted(employeeId: string, eventHash: string): Promise<void>;
+
+  markFailed(employeeId: string, eventHash: string): Promise<void>;
+}
+```
+
+**Regra:** `tryAcquireProcessing` jamais deve realizar um `GetItem` antes do `PutItem`/`UpdateItem`. A validação de duplicidade ocorre integralmente via operação condicional do DynamoDB (Zero-Read Pattern).
+
+---
+
+### `factories/` — Montagem de Dependências
+
+São os **únicos arquivos que importam implementações concretas** de Providers e Repositories.
+
+Cada entrypoint possui exatamente um Factory. O Factory constrói e injeta toda a árvore de dependências.
+
+```typescript
+// src/factories/makeDispatcherWorker.ts
+import { env } from '../config/env';
+import { DispatcherWorker } from '../workers/dispatcher/DispatcherWorker';
+import { DispatcherService } from '../services/dispatcherService';
+import { IdempotencyService } from '../services/idempotencyService';
+import { SqsQueueProvider } from '../providers/SqsQueueProvider';
+import { SaaSHttpClient } from '../providers/SaaSHttpClient';
+import { SecretsManagerSecretProvider } from '../providers/SecretsManagerSecretProvider';
+import { DynamoSyncStateRepository } from '../repositories/DynamoSyncStateRepository';
+import { CircuitBreaker } from '../utils/circuitBreaker';
+import { logger } from '../utils/logger';
+
+export function makeDispatcherWorker(): DispatcherWorker {
+  const secretProvider = new SecretsManagerSecretProvider(env.secretsCacheTtlSeconds);
+  const queueProvider = new SqsQueueProvider();
+  const syncStateRepo = new DynamoSyncStateRepository(env.dynamoTableName);
+  const circuitBreaker = new CircuitBreaker(env.circuitBreakerResetTimeoutSeconds);
+
+  const saasClient = new SaaSHttpClient(secretProvider, circuitBreaker, env.saasRateLimitPerSecond);
+  const idempotencyService = new IdempotencyService(syncStateRepo, env.processingLockTimeoutSeconds);
+  const dispatcherService = new DispatcherService(idempotencyService, saasClient, logger);
+
+  return new DispatcherWorker(dispatcherService, queueProvider, circuitBreaker, {
+    terminationQueueUrl: env.employeeTerminationQueueUrl,
+    upsertQueueUrl: env.employeeUpsertQueueUrl,
+  });
+}
+```
+
+---
+
+### `utils/` — Utilitários Transversais
+
+Código utilitário puramente técnico sem regra de negócio.
+
+| Utilitário | Responsabilidade |
+|---|---|
+| `logger.ts` | Log estruturado em JSON para stdout (CloudWatch) |
+| `hashGenerator.ts` | Gera SHA-256 do payload normalizado do evento |
+| `sleep.ts` | `Promise`-based `setTimeout` para pausas assíncronas |
+| `circuitBreaker.ts` | Implementação dos estados Closed / Open / Half-Open |
+
+---
+
+## Regras de Implementação Críticas
+
+### 1. Controle de Vazão (Rate Limit)
+
+Implementado exclusivamente em `SaaSHttpClient` via `bottleneck`.
+
+```
+configuração: SAAS_RATE_LIMIT_PER_SECOND=100
+```
+
+Nenhuma outra camada conhece ou aplica rate limit.
+
+---
+
+### 2. Circuit Breaker
+
+- Instância criada no Factory e injetada em `SaaSHttpClient` (registra falhas/sucessos) **e** em `DispatcherWorker` (controla o polling).
+- Quando `OPEN`: Worker aplica `sleep` de `CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS` antes de reiniciar o ciclo. Nenhum polling ocorre.
+- Mensagens em-voo quando o circuito abre: rejeitadas sem ACK, retornam à fila pelo Visibility Timeout.
+
+---
+
+### 3. Priorização de Filas no Worker
+
+A cada ciclo do loop:
+
+1. Tentar consumir de `employee-termination-queue`.
+2. **Somente se retornar vazio**, tentar `employee-upsert-queue`.
+3. Se ambas retornarem vazias, aplicar `sleep` de 5 segundos antes do próximo ciclo.
+
+```typescript
+// Pseudocódigo do loop principal
+while (true) {
+  if (circuitBreaker.isOpen()) {
+    await sleep(env.circuitBreakerResetTimeoutSeconds * 1000);
+    continue;
+  }
+
+  const terminations = await queueProvider.receiveMessages(terminationQueueUrl, 10);
+  if (terminations.length > 0) {
+    await processMessages(terminations);
+    continue;
+  }
+
+  const upserts = await queueProvider.receiveMessages(upsertQueueUrl, 10);
+  if (upserts.length > 0) {
+    await processMessages(upserts);
+    continue;
+  }
+
+  await sleep(5_000); // filas vazias
+}
+```
+
+---
+
+### 4. Idempotência (Zero-Read Pattern)
+
+- **Proibido `GetItem`** antes de verificar duplicidade.
+- A operação `tryAcquireProcessing` usa `ConditionExpression` no DynamoDB.
+- Máquina de estados:
+
+| Estado atual | `lockExpiresAt` | Ação |
+|---|---|---|
+| Registro inexistente | — | Criar como `PROCESSING` ✅ |
+| `PROCESSING` | ainda válido | Bloquear ❌ |
+| `PROCESSING` | expirado (órfão) | Permitir recuperação ✅ |
+| `FAILED` | — | Permitir reprocessamento ✅ |
+| `COMPLETED` | — | Descartar ❌ |
+
+---
+
+### 5. Parsing de XML em Stream
+
+- Biblioteca: `fast-xml-parser` em modo SAX/stream.
+- O arquivo S3 **não deve ser carregado integralmente em memória**.
+- Cada colaborador lido do stream é imediatamente publicado no SQS como evento individual.
+- Complexidade de memória: O(1).
+
+---
+
+### 6. Logs Estruturados
+
+Todos os logs vão para `stdout` em JSON (capturado pelo CloudWatch).
+
+```typescript
+// Sucesso
+logger.info({ timestamp, employeeId, flow: 'UPSERT', status: 'SUCCESS' });
+
+// Erro
+logger.error({ timestamp, employeeId, flow: 'TERMINATION', status: 'ERROR', error: 'Partner API timeout' });
+```
+
+Campos mínimos obrigatórios: `timestamp`, `employeeId`, `flow`, `status`.
+
+---
+
+## TypeScript — Diretrizes de Configuração
+
+```jsonc
+// tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  }
+}
+```
+
+Regras de escrita:
+
+- **Proibido `any`.** Use `unknown` para tipos dinâmicos.
+- **Proibido `process.env` fora de `src/config/env.ts`.**
+- Declare explicitamente o tipo de retorno em todas as funções e handlers.
+- Prefira `type` para DTOs e `interface` para contratos injetáveis (Providers, Repositories, Services).
+
+---
+
+## Testes
+
+- Framework: Jest + `ts-jest`.
+- Mocks implementam as interfaces (`IBucketProvider`, `IQueueProvider` etc.) para total isolamento.
+- Mocks para Circuit Breaker e Bottleneck expõem métodos de controle de estado determinístico (ex: `forceOpen()`, `forceFailure(n)`). **Proibido comportamento probabilístico em testes**.
+- Estrutura de diretórios espelha `src/`:
+
+```
+tests/
+├── unit/
+│   ├── services/
+│   ├── providers/
+│   └── repositories/
+└── integration/
+    ├── dispatcher/
+    └── ingestion/
+```
+
+---
+
+## Frontend (Dashboard)
+
+- Stack: React + Vite + TypeScript + Tailwind CSS.
+- Escopo: tela única, demonstrativo.
+- **Nenhuma chamada HTTP real.** Todos os dados vêm de `/frontend/src/mocks/`.
