@@ -1,23 +1,11 @@
 import Bottleneck from 'bottleneck';
 import { withBackoff } from '../utils/backoff';
+import { CircuitOpenError } from '../errors/CircuitOpenError';
+import { SaaSRequestError } from '../errors/SaaSRequestError';
 import type { EmployeeEvent } from '../types/employee.types';
 import type { ICircuitBreaker } from '../utils/interfaces/ICircuitBreaker';
 import type { ISaaSClient } from './interfaces/ISaaSClient';
 import type { ISecretProvider } from './interfaces/ISecretProvider';
-
-export class CircuitOpenError extends Error {
-  constructor() {
-    super('Circuit breaker is open');
-    this.name = 'CircuitOpenError';
-  }
-}
-
-export class SaaSRequestError extends Error {
-  constructor(readonly status: number) {
-    super(`SaaS request failed with status ${status}`);
-    this.name = 'SaaSRequestError';
-  }
-}
 
 function isTransientFailure(error: unknown): boolean {
   if (error instanceof CircuitOpenError) {

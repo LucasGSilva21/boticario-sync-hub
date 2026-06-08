@@ -1,6 +1,9 @@
 import { IdempotencyService } from '../../../src/services/idempotencyService';
 import { generateHash } from '../../../src/utils/hashGenerator';
-import type { EmployeeEvent, FlowType } from '../../../src/types/employee.types';
+import type {
+  EmployeeEvent,
+  FlowType,
+} from '../../../src/types/employee.types';
 import type { AcquireResult } from '../../../src/repositories/interfaces/ISyncStateRepository';
 
 type MockedRepo = {

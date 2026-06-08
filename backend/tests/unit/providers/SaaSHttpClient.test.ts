@@ -1,7 +1,5 @@
-import {
-  CircuitOpenError,
-  SaaSHttpClient,
-} from '../../../src/providers/SaaSHttpClient';
+import { SaaSHttpClient } from '../../../src/providers/SaaSHttpClient';
+import { CircuitOpenError } from '../../../src/errors/CircuitOpenError';
 import type { EmployeeEvent } from '../../../src/types/employee.types';
 import type { SaaSCredentials } from '../../../src/providers/interfaces/ISecretProvider';
 import type { ISecretProvider } from '../../../src/providers/interfaces/ISecretProvider';
