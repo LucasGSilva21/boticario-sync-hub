@@ -74,7 +74,7 @@ src/
 │   │   └── IXmlParser.ts
 │   ├── S3BucketProvider.ts
 │   ├── SqsQueueProvider.ts
-│   ├── SecretsManagerSecretProvider.ts
+│   ├── SecretsManagerProvider.ts
 │   ├── SaaSHttpClient.ts
 │   ├── SaxXmlParser.ts
 │   └── inmemory/          # Implementações in-memory para a demo local
@@ -266,7 +266,7 @@ Regras:
 |---|---|---|
 | `IBucketProvider` | `S3BucketProvider` | AWS S3 SDK v3 |
 | `IQueueProvider` | `SqsQueueProvider` | AWS SQS SDK v3 |
-| `ISecretProvider` | `SecretsManagerSecretProvider` | AWS Secrets Manager SDK v3 |
+| `ISecretProvider` | `SecretsManagerProvider` | AWS Secrets Manager SDK v3 |
 | `ISaaSClient` | `SaaSHttpClient` | `fetch` nativo + `bottleneck` |
 | `IXmlParser` | `SaxXmlParser` | `saxes` (SAX evented streaming) |
 
@@ -331,13 +331,16 @@ import { DispatcherService } from '../services/dispatcherService';
 import { IdempotencyService } from '../services/idempotencyService';
 import { SqsQueueProvider } from '../providers/SqsQueueProvider';
 import { SaaSHttpClient } from '../providers/SaaSHttpClient';
-import { SecretsManagerSecretProvider } from '../providers/SecretsManagerSecretProvider';
+import { SecretsManagerProvider } from '../providers/SecretsManagerProvider';
 import { DynamoSyncStateRepository } from '../repositories/DynamoSyncStateRepository';
 import { CircuitBreaker } from '../utils/circuitBreaker';
 import { logger } from '../utils/logger';
 
 export function makeDispatcherWorker(): DispatcherWorker {
-  const secretProvider = new SecretsManagerSecretProvider(env.secretsCacheTtlSeconds);
+  const secretProvider = new SecretsManagerProvider(
+    env.saasSecretName,
+    env.secretsCacheTtlSeconds,
+  );
   const queueProvider = new SqsQueueProvider(env.sqsWaitTimeSeconds);
   const syncStateRepo = new DynamoSyncStateRepository(env.dynamoTableName);
   const circuitBreaker = new CircuitBreaker(
@@ -544,7 +547,7 @@ O desafio exige rodar a solução localmente em minutos, **sem LocalStack/Docker
 | Interface | Impl. de produção | Impl. local (demo) |
 |---|---|---|
 | `IQueueProvider` | `SqsQueueProvider` | `InMemoryQueueProvider` (filas em arrays, pré-carregadas com eventos de exemplo) |
-| `ISecretProvider` | `SecretsManagerSecretProvider` | `InMemorySecretProvider` (credenciais fixas de demo) |
+| `ISecretProvider` | `SecretsManagerProvider` | `InMemorySecretProvider` (credenciais fixas de demo) |
 | `ISaaSClient` | `SaaSHttpClient` | `StubSaaSClient` (simula `2xx`/`5xx`/latência para exercitar backoff e Circuit Breaker) |
 | `ISyncStateRepository` | `DynamoSyncStateRepository` | `InMemorySyncStateRepository` (`Map` em memória, preserva idempotência) |
 

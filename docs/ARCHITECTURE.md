@@ -1147,7 +1147,7 @@ Executa `src/workers/dispatcher/main.local.ts`, que usa a factory `makeLocalDisp
 | Componente real | Substituto local | Função na demo |
 |---|---|---|
 | Amazon SQS (`SqsQueueProvider`) | `InMemoryQueueProvider` | Filas em memória pré-carregadas com eventos de exemplo (termination + upsert) |
-| Secrets Manager (`SecretsManagerSecretProvider`) | `InMemorySecretProvider` | Credenciais fixas de demonstração |
+| Secrets Manager (`SecretsManagerProvider`) | `InMemorySecretProvider` | Credenciais fixas de demonstração |
 | API do SaaS (`SaaSHttpClient`) | `StubSaaSClient` | Simula `2xx`/`5xx`/latência de forma determinística para evidenciar backoff e Circuit Breaker |
 | DynamoDB (`DynamoSyncStateRepository`) | `InMemorySyncStateRepository` | Estado e idempotência via `Map` em memória |
 

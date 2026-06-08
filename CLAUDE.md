@@ -78,7 +78,7 @@ Fase 3 — Utilitários
 Fase 4 — Providers (implementações concretas)
   [ ] src/providers/S3BucketProvider.ts
   [ ] src/providers/SqsQueueProvider.ts
-  [ ] src/providers/SecretsManagerSecretProvider.ts
+  [ ] src/providers/SecretsManagerProvider.ts
   [ ] src/providers/SaxXmlParser.ts
   [ ] src/providers/SaaSHttpClient.ts
 
