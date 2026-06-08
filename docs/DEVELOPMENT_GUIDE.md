@@ -61,6 +61,10 @@ src/
 │       └── main.local.ts # entrypoint da demo local (mocks in-memory)
 │
 ├── services/             # Regras de negócio (dependem apenas de interfaces)
+│   ├── interfaces/
+│   │   ├── IIdempotencyService.ts
+│   │   ├── IXmlProcessingService.ts
+│   │   └── IDispatcherService.ts
 │   ├── xmlProcessingService.ts
 │   ├── dispatcherService.ts
 │   └── idempotencyService.ts
