@@ -96,6 +96,8 @@ src/
 │   └── makeLocalDispatcherWorker.ts # injeta mocks in-memory (demo)
 │
 └── utils/                # Utilitários transversais sem regra de negócio
+    ├── interfaces/
+    │   └── ILogger.ts    # contrato de logging injetado nos Services
     ├── logger.ts
     ├── hashGenerator.ts
     ├── sleep.ts
@@ -336,7 +338,10 @@ export function makeDispatcherWorker(): DispatcherWorker {
   const secretProvider = new SecretsManagerSecretProvider(env.secretsCacheTtlSeconds);
   const queueProvider = new SqsQueueProvider();
   const syncStateRepo = new DynamoSyncStateRepository(env.dynamoTableName);
-  const circuitBreaker = new CircuitBreaker(env.circuitBreakerResetTimeoutSeconds);
+  const circuitBreaker = new CircuitBreaker(
+    env.circuitBreakerResetTimeoutSeconds,
+    env.circuitBreakerFailureThreshold,
+  );
 
   const saasClient = new SaaSHttpClient(secretProvider, circuitBreaker, env.saasRateLimitPerSecond);
   const idempotencyService = new IdempotencyService(syncStateRepo, env.processingLockTimeoutSeconds);
