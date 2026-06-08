@@ -23,6 +23,8 @@ function requireNumberEnv(key: string): number {
 
 export const env = {
   saasRateLimitPerSecond: requireNumberEnv('SAAS_RATE_LIMIT_PER_SECOND'),
+  saasMaxRetryAttempts: requireNumberEnv('SAAS_MAX_RETRY_ATTEMPTS'),
+  saasBackoffBaseMs: requireNumberEnv('SAAS_BACKOFF_BASE_MS'),
   processingLockTimeoutSeconds: requireNumberEnv(
     'PROCESSING_LOCK_TIMEOUT_SECONDS',
   ),
