@@ -31,6 +31,7 @@ export const env = {
   circuitBreakerFailureThreshold: requireNumberEnv(
     'CIRCUIT_BREAKER_FAILURE_THRESHOLD',
   ),
+  sqsWaitTimeSeconds: requireNumberEnv('SQS_WAIT_TIME_SECONDS'),
   employeeTerminationQueueUrl: requireEnv('EMPLOYEE_TERMINATION_QUEUE_URL'),
   employeeUpsertQueueUrl: requireEnv('EMPLOYEE_UPSERT_QUEUE_URL'),
   dynamoTableName: requireEnv('DYNAMO_TABLE_NAME'),
