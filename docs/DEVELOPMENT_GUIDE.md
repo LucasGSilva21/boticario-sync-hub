@@ -129,6 +129,8 @@ export const env = {
   processingLockTimeoutSeconds: parseInt(requireEnv('PROCESSING_LOCK_TIMEOUT_SECONDS'), 10),
   secretsCacheTtlSeconds: parseInt(requireEnv('SECRETS_CACHE_TTL_SECONDS'), 10),
   circuitBreakerResetTimeoutSeconds: parseInt(requireEnv('CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS'), 10),
+  circuitBreakerFailureThreshold: parseInt(requireEnv('CIRCUIT_BREAKER_FAILURE_THRESHOLD'), 10),
+  sqsWaitTimeSeconds: parseInt(requireEnv('SQS_WAIT_TIME_SECONDS'), 10),
   employeeTerminationQueueUrl: requireEnv('EMPLOYEE_TERMINATION_QUEUE_URL'),
   employeeUpsertQueueUrl: requireEnv('EMPLOYEE_UPSERT_QUEUE_URL'),
   dynamoTableName: requireEnv('DYNAMO_TABLE_NAME'),
@@ -336,7 +338,7 @@ import { logger } from '../utils/logger';
 
 export function makeDispatcherWorker(): DispatcherWorker {
   const secretProvider = new SecretsManagerSecretProvider(env.secretsCacheTtlSeconds);
-  const queueProvider = new SqsQueueProvider();
+  const queueProvider = new SqsQueueProvider(env.sqsWaitTimeSeconds);
   const syncStateRepo = new DynamoSyncStateRepository(env.dynamoTableName);
   const circuitBreaker = new CircuitBreaker(
     env.circuitBreakerResetTimeoutSeconds,
