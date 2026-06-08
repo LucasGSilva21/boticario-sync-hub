@@ -366,10 +366,17 @@ export function makeDispatcherWorker(): DispatcherWorker {
   const idempotencyService = new IdempotencyService(syncStateRepo, env.processingLockTimeoutSeconds);
   const dispatcherService = new DispatcherService(idempotencyService, saasClient, logger);
 
-  return new DispatcherWorker(dispatcherService, queueProvider, circuitBreaker, {
-    terminationQueueUrl: env.employeeTerminationQueueUrl,
-    upsertQueueUrl: env.employeeUpsertQueueUrl,
-  });
+  return new DispatcherWorker(
+    dispatcherService,
+    queueProvider,
+    circuitBreaker,
+    {
+      terminationQueueUrl: env.employeeTerminationQueueUrl,
+      upsertQueueUrl: env.employeeUpsertQueueUrl,
+      circuitBreakerResetMs: env.circuitBreakerResetTimeoutSeconds * 1000,
+    },
+    logger,
+  );
 }
 ```
 
