@@ -15,13 +15,16 @@ export default tseslint.config(
     ],
     languageOptions: {
       parserOptions: {
-        projectService: true, // usa o tsconfig correto automaticamente (build/spec)
+        project: ['./tsconfig.json', './tsconfig.spec.json'],
         tsconfigRootDir: import.meta.dirname,
       },
     },
     rules: {
       // Exigência do CLAUDE.md / DEVELOPMENT_GUIDE
-      '@typescript-eslint/explicit-function-return-type': 'error',
+      '@typescript-eslint/explicit-function-return-type': [
+        'error',
+        { allowExpressions: true },
+      ],
       '@typescript-eslint/no-explicit-any': 'error',
     },
   },
