@@ -1,7 +1,3 @@
-// Único ponto de acesso a process.env em todo o backend.
-// Valida e congela todas as variáveis no boot (fail-fast): se algo faltar
-// ou for inválido, a aplicação não sobe.
-
 function requireEnv(key: string): string {
   const value = process.env[key];
   if (!value) {
@@ -31,6 +27,9 @@ export const env = {
   secretsCacheTtlSeconds: requireNumberEnv('SECRETS_CACHE_TTL_SECONDS'),
   circuitBreakerResetTimeoutSeconds: requireNumberEnv(
     'CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS',
+  ),
+  circuitBreakerFailureThreshold: requireNumberEnv(
+    'CIRCUIT_BREAKER_FAILURE_THRESHOLD',
   ),
   employeeTerminationQueueUrl: requireEnv('EMPLOYEE_TERMINATION_QUEUE_URL'),
   employeeUpsertQueueUrl: requireEnv('EMPLOYEE_UPSERT_QUEUE_URL'),
