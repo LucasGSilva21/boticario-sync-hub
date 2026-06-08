@@ -290,6 +290,7 @@ Abstraem toda interação com DynamoDB. Nenhum Service acessa o DynamoDB diretam
 
 ```typescript
 // src/repositories/interfaces/ISyncStateRepository.ts
+import type { FlowType } from '../../types/employee.types';
 
 export type AcquireResult =
   | { acquired: true }
@@ -300,7 +301,7 @@ export interface ISyncStateRepository {
    * Tenta registrar o evento como PROCESSING via Conditional Write (Zero-Read Pattern).
    * Retorna false se o evento já estiver COMPLETED ou PROCESSING com lock válido.
    */
-  tryAcquireProcessing(employeeId: string, eventHash: string, lockExpiresAt: Date): Promise<AcquireResult>;
+  tryAcquireProcessing(employeeId: string, eventHash: string, flow: FlowType, lockExpiresAt: Date): Promise<AcquireResult>;
 
   markCompleted(employeeId: string, eventHash: string): Promise<void>;
 
