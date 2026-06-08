@@ -59,6 +59,9 @@ src/
 │   ├── employeeIngestion.ts
 │   └── immediateTermination.ts
 │
+├── controllers/          # Adapters HTTP (request/response ↔ domínio)
+│   └── TerminationController.ts
+│
 ├── workers/              # Entrypoints do ECS Fargate (main finos)
 │   └── dispatcher/
 │       ├── main.ts
@@ -68,10 +71,15 @@ src/
 │   ├── interfaces/
 │   │   ├── IIdempotencyService.ts
 │   │   ├── IXmlProcessingService.ts
+│   │   ├── ITerminationService.ts
 │   │   └── IDispatcherService.ts
 │   ├── xmlProcessingService.ts
+│   ├── terminationService.ts
 │   ├── dispatcherService.ts
 │   └── idempotencyService.ts
+│
+├── controllers/          # Adapters HTTP (request/response ↔ domínio)
+│   └── TerminationController.ts
 │
 ├── providers/            # Implementações de I/O externo (AWS SDK, HTTP)
 │   ├── interfaces/

@@ -90,6 +90,8 @@ Fase 5 — Repositories
 Fase 6 — Services
   [ ] src/services/idempotencyService.ts
   [ ] src/services/xmlProcessingService.ts
+  [ ] src/services/terminationService.ts
+  [ ] src/controllers/TerminationController.ts
   [ ] src/services/dispatcherService.ts
 
 Fase 7 — Worker (lógica do loop)
