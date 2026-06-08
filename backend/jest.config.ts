@@ -27,6 +27,7 @@ const config: Config = {
     '!src/config/**', // leitura/validação de env
     '!src/functions/**', // entrypoints finos (sem lógica, por contrato)
     '!src/workers/**/main.ts', // entrypoint fino do worker (sem lógica)
+    '!src/factories/**', // composition root (DI); coberto por testes de integração
   ],
   coverageDirectory: 'coverage',
   coverageProvider: 'v8',
