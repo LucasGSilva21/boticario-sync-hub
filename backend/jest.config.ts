@@ -11,7 +11,7 @@ const config: Config = {
   // Transpila TS via ts-jest usando o tsconfig do projeto (nodenext → CommonJS).
   // Forma explícita (não-deprecada) recomendada pelo ts-jest 29.
   transform: {
-    '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.spec.json' }],
+    '^.+\\.ts$': ['ts-jest', { tsconfig: 'tests/tsconfig.json' }],
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
 
