@@ -42,6 +42,7 @@ Esses documentos são a fonte única da verdade. Em caso de conflito:
 
 - `src/functions/*.ts` → exporta o handler AWS, chama o Factory, delega. Nenhuma lógica.
 - `src/workers/dispatcher/main.ts` → chama o Factory, chama `worker.start()`. Nenhuma lógica.
+- `src/workers/dispatcher/main.local.ts` → entrypoint da demo local; chama `makeLocalDispatcherWorker()` (providers in-memory) e `worker.start()`. Nenhuma lógica.
 
 ---
 
@@ -71,13 +72,14 @@ Fase 3 — Utilitários
   [ ] src/utils/logger.ts
   [ ] src/utils/hashGenerator.ts
   [ ] src/utils/sleep.ts
+  [ ] src/utils/backoff.ts
   [ ] src/utils/circuitBreaker.ts
 
 Fase 4 — Providers (implementações concretas)
   [ ] src/providers/S3BucketProvider.ts
   [ ] src/providers/SqsQueueProvider.ts
   [ ] src/providers/SecretsManagerSecretProvider.ts
-  [ ] src/providers/FastXmlParser.ts
+  [ ] src/providers/SaxXmlParser.ts
   [ ] src/providers/SaaSHttpClient.ts
 
 Fase 5 — Repositories
@@ -101,7 +103,15 @@ Fase 9 — Entrypoints (thin layers)
   [ ] src/functions/immediateTermination.ts
   [ ] src/workers/dispatcher/main.ts
 
-Fase 10 — Testes
+Fase 10 — Modo Local / Demo (Mocks in-memory)
+  [ ] src/providers/inmemory/InMemoryQueueProvider.ts
+  [ ] src/providers/inmemory/InMemorySecretProvider.ts
+  [ ] src/providers/inmemory/StubSaaSClient.ts
+  [ ] src/repositories/inmemory/InMemorySyncStateRepository.ts
+  [ ] src/factories/makeLocalDispatcherWorker.ts
+  [ ] src/workers/dispatcher/main.local.ts
+
+Fase 11 — Testes
   [ ] tests/unit/services/idempotencyService.test.ts
   [ ] tests/unit/services/dispatcherService.test.ts
   [ ] tests/unit/services/xmlProcessingService.test.ts
@@ -117,6 +127,8 @@ Fase 10 — Testes
 
 ```env
 SAAS_RATE_LIMIT_PER_SECOND=100
+SAAS_MAX_RETRY_ATTEMPTS=3
+SAAS_BACKOFF_BASE_MS=200
 PROCESSING_LOCK_TIMEOUT_SECONDS=240
 SECRETS_CACHE_TTL_SECONDS=300
 CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS=30

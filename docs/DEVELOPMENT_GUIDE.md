@@ -57,7 +57,8 @@ src/
 │
 ├── workers/              # Entrypoints do ECS Fargate (main finos)
 │   └── dispatcher/
-│       └── main.ts
+│       ├── main.ts
+│       └── main.local.ts # entrypoint da demo local (mocks in-memory)
 │
 ├── services/             # Regras de negócio (dependem apenas de interfaces)
 │   ├── xmlProcessingService.ts
@@ -75,22 +76,30 @@ src/
 │   ├── SqsQueueProvider.ts
 │   ├── SecretsManagerSecretProvider.ts
 │   ├── SaaSHttpClient.ts
-│   └── FastXmlParser.ts
+│   ├── SaxXmlParser.ts
+│   └── inmemory/          # Implementações in-memory para a demo local
+│       ├── InMemoryQueueProvider.ts
+│       ├── InMemorySecretProvider.ts
+│       └── StubSaaSClient.ts
 │
 ├── repositories/         # Camada de persistência (DynamoDB)
 │   ├── interfaces/
 │   │   └── ISyncStateRepository.ts
-│   └── DynamoSyncStateRepository.ts
+│   ├── DynamoSyncStateRepository.ts
+│   └── inmemory/
+│       └── InMemorySyncStateRepository.ts
 │
 ├── factories/            # Montagem e injeção de dependências (um por entrypoint)
 │   ├── makeIngestionHandler.ts
 │   ├── makeTerminationHandler.ts
-│   └── makeDispatcherWorker.ts
+│   ├── makeDispatcherWorker.ts
+│   └── makeLocalDispatcherWorker.ts # injeta mocks in-memory (demo)
 │
 └── utils/                # Utilitários transversais sem regra de negócio
     ├── logger.ts
     ├── hashGenerator.ts
-    └── sleep.ts
+    ├── sleep.ts
+    └── backoff.ts        # retry com backoff exponencial + jitter
 ```
 
 ---
@@ -113,6 +122,8 @@ function requireEnv(key: string): string {
 
 export const env = {
   saasRateLimitPerSecond: parseInt(requireEnv('SAAS_RATE_LIMIT_PER_SECOND'), 10),
+  saasMaxRetryAttempts: parseInt(requireEnv('SAAS_MAX_RETRY_ATTEMPTS'), 10),
+  saasBackoffBaseMs: parseInt(requireEnv('SAAS_BACKOFF_BASE_MS'), 10),
   processingLockTimeoutSeconds: parseInt(requireEnv('PROCESSING_LOCK_TIMEOUT_SECONDS'), 10),
   secretsCacheTtlSeconds: parseInt(requireEnv('SECRETS_CACHE_TTL_SECONDS'), 10),
   circuitBreakerResetTimeoutSeconds: parseInt(requireEnv('CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS'), 10),
@@ -206,7 +217,8 @@ void (async (): Promise<void> => {
 ```json
 {
   "scripts": {
-    "start:dispatcher": "ts-node src/workers/dispatcher/main.ts"
+    "start:dispatcher": "ts-node src/workers/dispatcher/main.ts",
+    "start:local": "ts-node src/workers/dispatcher/main.local.ts"
   }
 }
 ```
@@ -252,7 +264,7 @@ Regras:
 | `IQueueProvider` | `SqsQueueProvider` | AWS SQS SDK v3 |
 | `ISecretProvider` | `SecretsManagerSecretProvider` | AWS Secrets Manager SDK v3 |
 | `ISaaSClient` | `SaaSHttpClient` | `fetch` nativo + `bottleneck` |
-| `IXmlParser` | `FastXmlParser` | `fast-xml-parser` |
+| `IXmlParser` | `SaxXmlParser` | `saxes` (SAX evented streaming) |
 
 #### Exemplo de interface (sem nome de tecnologia)
 
@@ -347,6 +359,7 @@ Código utilitário puramente técnico sem regra de negócio.
 | `logger.ts` | Log estruturado em JSON para stdout (CloudWatch) |
 | `hashGenerator.ts` | Gera SHA-256 do payload normalizado do evento |
 | `sleep.ts` | `Promise`-based `setTimeout` para pausas assíncronas |
+| `backoff.ts` | Retry com backoff exponencial + jitter; respeita o Circuit Breaker (não retenta quando `OPEN`) |
 | `circuitBreaker.ts` | Implementação dos estados Closed / Open / Half-Open |
 
 ---
@@ -373,7 +386,20 @@ Nenhuma outra camada conhece ou aplica rate limit.
 
 ---
 
-### 3. Priorização de Filas no Worker
+### 3. Retentativa com Backoff Exponencial
+
+Política de retentativa **em camadas** (atende ao requisito de "retentativa inteligente"):
+
+1. **Backoff exponencial com jitter** no `SaaSHttpClient` (via `utils/backoff.ts`) para falhas transitórias do parceiro (`5xx` / timeout): até `SAAS_MAX_RETRY_ATTEMPTS` tentativas, com espera `SAAS_BACKOFF_BASE_MS * 2^(n-1)` + jitter aleatório.
+2. **Circuit Breaker** para instabilidade sustentada: se o circuito estiver `OPEN`, o cliente lança `CircuitOpenError` **imediatamente, sem backoff** — não amplifica carga sobre um parceiro já caído. Cada falha/sucesso alimenta o Circuit Breaker.
+3. **SQS redrive + Visibility Timeout**: esgotadas as tentativas in-process, o registro vira `FAILED` e a mensagem retorna nativamente à fila.
+4. **DLQ**: após `maxReceiveCount`, a mensagem segue para a DLQ do fluxo.
+
+**Regra:** o backoff in-process deve ser curto (poucas tentativas) para não segurar o lock (`lockExpiresAt`) nem o slot de rate limit. A soma do backoff deve ser muito menor que `PROCESSING_LOCK_TIMEOUT_SECONDS`.
+
+---
+
+### 4. Priorização de Filas no Worker
 
 A cada ciclo do loop:
 
@@ -407,7 +433,7 @@ while (true) {
 
 ---
 
-### 4. Idempotência (Zero-Read Pattern)
+### 5. Idempotência (Zero-Read Pattern)
 
 - **Proibido `GetItem`** antes de verificar duplicidade.
 - A operação `tryAcquireProcessing` usa `ConditionExpression` no DynamoDB.
@@ -423,16 +449,18 @@ while (true) {
 
 ---
 
-### 5. Parsing de XML em Stream
+### 6. Parsing de XML em Stream
 
-- Biblioteca: `fast-xml-parser` em modo SAX/stream.
+- Biblioteca: `saxes` — parser SAX **evented/streaming real** (JS puro, tipos nativos).
+- O `Body` do `GetObjectCommand` (S3 SDK v3) é um `Readable` consumido **incrementalmente** pelo `saxes`.
 - O arquivo S3 **não deve ser carregado integralmente em memória**.
-- Cada colaborador lido do stream é imediatamente publicado no SQS como evento individual.
-- Complexidade de memória: O(1).
+- Cada colaborador é montado a partir dos eventos SAX (`opentag` / `text` / `closetag`) e, ao fechar `</employee>`, imediatamente publicado no SQS como evento individual.
+- Complexidade de memória: O(1) — independente do tamanho do arquivo.
+- **Proibido `fast-xml-parser` na ingestão:** ele desserializa o documento inteiro em memória (não é SAX/stream) e inviabiliza lotes grandes.
 
 ---
 
-### 6. Logs Estruturados
+### 7. Logs Estruturados
 
 Todos os logs vão para `stdout` em JSON (capturado pelo CloudWatch).
 
@@ -494,6 +522,25 @@ tests/
     ├── dispatcher/
     └── ingestion/
 ```
+
+---
+
+## Modo Local / Demo (Mocks)
+
+O desafio exige rodar a solução localmente em minutos, **sem LocalStack/Docker e sem AWS real** ("use Mocks/Stubs"). A DI por interfaces viabiliza isso trocando apenas os Providers concretos por implementações in-memory — a lógica de negócio exercitada na demo é idêntica à de produção.
+
+- **Entrypoint:** `src/workers/dispatcher/main.local.ts` (script `npm run start:local`).
+- **Factory:** `makeLocalDispatcherWorker()` injeta as implementações in-memory no **mesmo** `DispatcherService` / `DispatcherWorker` de produção.
+- **Sem `env.ts`:** a factory local usa defaults de demonstração (não exige variáveis de ambiente) — `start:local` roda zero-config.
+
+| Interface | Impl. de produção | Impl. local (demo) |
+|---|---|---|
+| `IQueueProvider` | `SqsQueueProvider` | `InMemoryQueueProvider` (filas em arrays, pré-carregadas com eventos de exemplo) |
+| `ISecretProvider` | `SecretsManagerSecretProvider` | `InMemorySecretProvider` (credenciais fixas de demo) |
+| `ISaaSClient` | `SaaSHttpClient` | `StubSaaSClient` (simula `2xx`/`5xx`/latência para exercitar backoff e Circuit Breaker) |
+| `ISyncStateRepository` | `DynamoSyncStateRepository` | `InMemorySyncStateRepository` (`Map` em memória, preserva idempotência) |
+
+O `StubSaaSClient` deve permitir respostas **determinísticas** (ex.: falhar N vezes e depois suceder) para demonstrar retry/backoff e abertura do circuito sem aleatoriedade não-controlada (alinhado à regra de testes determinísticos).
 
 ---
 

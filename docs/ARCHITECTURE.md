@@ -107,9 +107,9 @@ S3 ObjectCreated Event
 
 ## Processamento do XML
 
-Para evitar consumo excessivo de memória, o XML deve ser processado utilizando Streams.
+Para evitar consumo excessivo de memória, o XML deve ser processado via **streaming SAX (evented)** com a biblioteca `saxes`, consumindo incrementalmente o `Body` (`Readable`) retornado pelo S3.
 
-O arquivo não deve ser carregado integralmente em memória.
+O arquivo não deve ser carregado integralmente em memória. **Não** se utiliza `fast-xml-parser` nesta etapa, pois ele desserializa o documento inteiro em memória (não é SAX/stream).
 
 Cada colaborador encontrado no XML deve ser transformado em um evento individual e publicado na fila:
 
@@ -441,13 +441,13 @@ ou timeout de comunicação:
 Timeout
 ```
 
-o registro é atualizado para:
+o `SaaSIntegrationDispatcher` aplica primeiro **retentativa interna com backoff exponencial + jitter** (até `SAAS_MAX_RETRY_ATTEMPTS` tentativas). Persistindo a falha, o registro é atualizado para:
 
 ```text
 Status = FAILED
 ```
 
-e a mensagem retorna para a fila através do mecanismo padrão do SQS.
+e a mensagem retorna para a fila através do mecanismo padrão do SQS (redrive por Visibility Timeout), até eventual envio à DLQ.
 
 ---
 
@@ -697,6 +697,19 @@ Caso o circuito mude para o estado **Open** enquanto um lote de mensagens já ti
 - As requisições pendentes desse lote para o SaaS serão imediatamente bloqueadas pelo Circuit Breaker.
 - A aplicação rejeitará a mensagem no código sem confirmar o recebimento (sem enviar o ACK), fazendo com que ela retorne nativamente para a fila após a expiração do *Visibility Timeout*.
 - Isso garante que a instabilidade repentina do parceiro não queime de forma injusta o contador de tentativas (`maxReceiveCount`) das mensagens que já estavam no meio do caminho.
+
+## Política de Retentativa em Camadas
+
+O requisito de "retentativa inteligente (ex.: Exponential Backoff)" é atendido por uma estratégia em camadas, da mais barata à mais drástica:
+
+1. **Backoff exponencial com jitter (in-process)** — o `SaaSIntegrationDispatcher` retenta falhas transitórias (`5xx` / timeout) até `SAAS_MAX_RETRY_ATTEMPTS` vezes, aguardando `SAAS_BACKOFF_BASE_MS × 2^(n-1)` + jitter entre as tentativas. Absorve instabilidades curtas sem devolver a mensagem à fila.
+2. **Circuit Breaker** — para instabilidade sustentada. Com o circuito `Open`, nenhuma nova tentativa é feita (sem backoff): o polling é suspenso e mensagens em voo retornam à fila sem ACK. Evita tempestade de retentativas contra um parceiro já indisponível.
+3. **SQS redrive (Visibility Timeout)** — esgotado o backoff in-process, a mensagem volta à fila nativamente para nova tentativa futura.
+4. **Dead Letter Queue** — após `maxReceiveCount`, a mensagem é isolada na DLQ do fluxo para análise.
+
+O backoff in-process é deliberadamente curto (poucas tentativas) para não exceder o `lockExpiresAt` nem reter o slot global de vazão.
+
+---
 
 # 16. Integração com o SaaS
 
@@ -1117,7 +1130,32 @@ Duplicações são tratadas pela camada de idempotência.
 
 ---
 
-# 25. Resumo da Solução
+# 25. Execução Local e Estratégia de Mocks
+
+Conforme as premissas do desafio (§2), a solução deve rodar localmente **sem AWS real, LocalStack ou Docker complexo**, usando Mocks/Stubs. A arquitetura de DI por interfaces torna isso direto: troca-se apenas a camada de Providers concretos por implementações in-memory, preservando 100% da lógica de negócio.
+
+## Acionamento
+
+```text
+npm run start:local
+```
+
+Executa `src/workers/dispatcher/main.local.ts`, que usa a factory `makeLocalDispatcherWorker()` — variante da factory de produção que injeta mocks no **mesmo** `DispatcherService` / `DispatcherWorker`.
+
+## Substituições
+
+| Componente real | Substituto local | Função na demo |
+|---|---|---|
+| Amazon SQS (`SqsQueueProvider`) | `InMemoryQueueProvider` | Filas em memória pré-carregadas com eventos de exemplo (termination + upsert) |
+| Secrets Manager (`SecretsManagerSecretProvider`) | `InMemorySecretProvider` | Credenciais fixas de demonstração |
+| API do SaaS (`SaaSHttpClient`) | `StubSaaSClient` | Simula `2xx`/`5xx`/latência de forma determinística para evidenciar backoff e Circuit Breaker |
+| DynamoDB (`DynamoSyncStateRepository`) | `InMemorySyncStateRepository` | Estado e idempotência via `Map` em memória |
+
+A demo evidencia, sem nuvem: priorização de filas, rate limit, backoff exponencial, Circuit Breaker e idempotência (Zero-Read).
+
+---
+
+# 26. Resumo da Solução
 
 A arquitetura proposta garante:
 
