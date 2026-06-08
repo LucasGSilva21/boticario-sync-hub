@@ -47,6 +47,10 @@ src/
 ├── config/               # Variáveis de ambiente (único ponto de acesso ao process.env)
 │   └── env.ts
 │
+├── errors/               # Tipos de erro customizados (cross-cutting)
+│   ├── CircuitOpenError.ts
+│   └── SaaSRequestError.ts
+│
 ├── types/                # DTOs, enums e eventos de domínio compartilhados
 │   ├── employee.types.ts
 │   └── sync-state.types.ts

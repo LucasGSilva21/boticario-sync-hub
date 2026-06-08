@@ -76,6 +76,8 @@ Fase 3 — Utilitários
   [ ] src/utils/circuitBreaker.ts
 
 Fase 4 — Providers (implementações concretas)
+  [ ] src/errors/CircuitOpenError.ts
+  [ ] src/errors/SaaSRequestError.ts
   [ ] src/providers/S3BucketProvider.ts
   [ ] src/providers/SqsQueueProvider.ts
   [ ] src/providers/SecretsManagerProvider.ts
