@@ -348,7 +348,13 @@ export function makeDispatcherWorker(): DispatcherWorker {
     env.circuitBreakerFailureThreshold,
   );
 
-  const saasClient = new SaaSHttpClient(secretProvider, circuitBreaker, env.saasRateLimitPerSecond);
+  const saasClient = new SaaSHttpClient(
+    secretProvider,
+    circuitBreaker,
+    env.saasRateLimitPerSecond,
+    env.saasMaxRetryAttempts,
+    env.saasBackoffBaseMs,
+  );
   const idempotencyService = new IdempotencyService(syncStateRepo, env.processingLockTimeoutSeconds);
   const dispatcherService = new DispatcherService(idempotencyService, saasClient, logger);
 
