@@ -1,0 +1,30 @@
+service: boticario-sync-hub
+
+frameworkVersion: '3'
+
+plugins:
+  - serverless-plugin-typescript
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+
+functions:
+  # Fluxo Batch — ingestão de XML disparada por upload no bucket S3
+  employeeIngestion:
+    handler: src/functions/employeeIngestion.handler
+    events:
+      - s3:
+          bucket: employee-sync-batch-files
+          event: s3:ObjectCreated:*
+          existing: true # bucket é infra long-lived (Terraform), não criado aqui
+
+  # Fluxo Imediato — desligamentos recebidos via API Gateway
+  immediateTermination:
+    handler: src/functions/immediateTermination.handler
+    events:
+      - httpApi:
+          method: POST
+          path: /api/v1/terminations

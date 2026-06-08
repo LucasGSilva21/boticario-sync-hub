@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    /* Base — conforme DEVELOPMENT_GUIDE.md (fonte da verdade) */
+    "target": "ES2022",
+    "module": "nodenext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "rootDir": "src",
+
+    /* Resolução de módulos — par moderno do TS 6 (sem deprecation).
+       Sem "type":"module" no package.json, a emissão permanece CommonJS. */
+    "moduleResolution": "nodenext",
+    "resolveJsonModule": true,
+    "types": ["node"],
+
+    /* Rigor adicional alinhado à proibição de `any` e ao "strict total" */
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+
+    /* Build / DX */
+    "sourceMap": true,
+    "declaration": false,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
