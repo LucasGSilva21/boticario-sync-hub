@@ -16,8 +16,6 @@ export function makeDispatcherWorker(): DispatcherWorker {
   );
   const queueProvider = new SqsQueueProvider(env.sqsWaitTimeSeconds);
   const syncStateRepo = new DynamoSyncStateRepository(env.dynamoTableName);
-  // Mesma instância do Circuit Breaker injetada no cliente (registra falhas)
-  // e no worker (controla o polling).
   const circuitBreaker = new CircuitBreaker(
     env.circuitBreakerResetTimeoutSeconds,
     env.circuitBreakerFailureThreshold,
@@ -37,6 +35,7 @@ export function makeDispatcherWorker(): DispatcherWorker {
   const dispatcherService = new DispatcherService(
     idempotencyService,
     saasClient,
+    circuitBreaker,
     logger,
   );
   return new DispatcherWorker(

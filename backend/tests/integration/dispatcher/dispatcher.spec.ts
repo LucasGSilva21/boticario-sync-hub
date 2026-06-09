@@ -102,7 +102,12 @@ function buildDispatcher(opts: BuildOptions): {
     lockTimeoutSeconds,
     () => new Date(clock.now()),
   );
-  const dispatcher = new DispatcherService(idempotency, saasClient, logger);
+  const dispatcher = new DispatcherService(
+    idempotency,
+    saasClient,
+    circuitBreaker,
+    logger,
+  );
   const worker = new DispatcherWorker(
     dispatcher,
     queue,

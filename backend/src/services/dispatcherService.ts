@@ -1,6 +1,7 @@
 import { CircuitOpenError } from '../errors/CircuitOpenError';
 import type { EmployeeEvent } from '../types/employee.types';
 import type { ISaaSClient } from '../providers/interfaces/ISaaSClient';
+import type { ICircuitBreaker } from '../utils/interfaces/ICircuitBreaker';
 import type { ILogger } from '../utils/interfaces/ILogger';
 import type { IIdempotencyService } from './interfaces/IIdempotencyService';
 import type {
@@ -12,10 +13,18 @@ export class DispatcherService implements IDispatcherService {
   constructor(
     private readonly idempotency: IIdempotencyService,
     private readonly saasClient: ISaaSClient,
+    private readonly circuitBreaker: ICircuitBreaker,
     private readonly logger: ILogger,
   ) {}
 
   async process(event: EmployeeEvent): Promise<DispatchResult> {
+    // Circuito aberto: devolve à fila ANTES de adquirir o lock. Sem chamada de
+    // rede, evita criar um registro PROCESSING espúrio (preso por até
+    // PROCESSING_LOCK_TIMEOUT_SECONDS) para um evento que nem chegaria ao SaaS.
+    if (this.circuitBreaker.isOpen()) {
+      return 'RETRY';
+    }
+
     const acquired = await this.idempotency.tryAcquire(event);
 
     if (!acquired.acquired) {

@@ -9,10 +9,17 @@ type MockedIdempotency = {
   markFailed: jest.Mock<Promise<void>, [EmployeeEvent]>;
 };
 
+type MockedCircuitBreaker = {
+  isOpen: jest.Mock<boolean, []>;
+  recordSuccess: jest.Mock<void, []>;
+  recordFailure: jest.Mock<void, []>;
+};
+
 type Mocks = {
   service: DispatcherService;
   idempotency: MockedIdempotency;
   saasClient: { sendEvent: jest.Mock<Promise<void>, [EmployeeEvent]> };
+  circuitBreaker: MockedCircuitBreaker;
   logger: {
     info: jest.Mock<void, [Record<string, unknown>]>;
     warn: jest.Mock<void, [Record<string, unknown>]>;
@@ -27,13 +34,24 @@ function makeService(): Mocks {
     markFailed: jest.fn<Promise<void>, [EmployeeEvent]>(),
   };
   const saasClient = { sendEvent: jest.fn<Promise<void>, [EmployeeEvent]>() };
+  // Fechado por padrão: o caminho feliz não passa pela guarda do circuito.
+  const circuitBreaker: MockedCircuitBreaker = {
+    isOpen: jest.fn<boolean, []>().mockReturnValue(false),
+    recordSuccess: jest.fn<void, []>(),
+    recordFailure: jest.fn<void, []>(),
+  };
   const logger = {
     info: jest.fn<void, [Record<string, unknown>]>(),
     warn: jest.fn<void, [Record<string, unknown>]>(),
     error: jest.fn<void, [Record<string, unknown>]>(),
   };
-  const service = new DispatcherService(idempotency, saasClient, logger);
-  return { service, idempotency, saasClient, logger };
+  const service = new DispatcherService(
+    idempotency,
+    saasClient,
+    circuitBreaker,
+    logger,
+  );
+  return { service, idempotency, saasClient, circuitBreaker, logger };
 }
 
 const event: EmployeeEvent = {
@@ -44,6 +62,15 @@ const event: EmployeeEvent = {
 };
 
 describe('DispatcherService', () => {
+  it('RETRYs without acquiring the lock when the circuit is already open', async () => {
+    const { service, idempotency, saasClient, circuitBreaker } = makeService();
+    circuitBreaker.isOpen.mockReturnValue(true);
+    const result = await service.process(event);
+    expect(result).toBe('RETRY');
+    expect(idempotency.tryAcquire).not.toHaveBeenCalled();
+    expect(saasClient.sendEvent).not.toHaveBeenCalled();
+  });
+
   it('sends, marks completed, logs success and ACKs when the lock is acquired', async () => {
     const { service, idempotency, saasClient, logger } = makeService();
     idempotency.tryAcquire.mockResolvedValue({ acquired: true });
