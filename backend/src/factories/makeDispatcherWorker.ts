@@ -25,6 +25,7 @@ export function makeDispatcherWorker(): DispatcherWorker {
   const saasClient = new SaaSHttpClient(
     secretProvider,
     circuitBreaker,
+    logger,
     env.saasRateLimitPerSecond,
     env.saasMaxRetryAttempts,
     env.saasBackoffBaseMs,
