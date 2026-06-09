@@ -116,11 +116,13 @@ src/
 │
 └── utils/                # Utilitários transversais sem regra de negócio
     ├── interfaces/
-    │   └── ILogger.ts    # contrato de logging injetado nos Services
+    │   ├── ILogger.ts    # contrato de logging injetado nos Services
+    │   └── IMetrics.ts   # contrato de métricas (EMF) injetado nos emissores
     ├── logger.ts
     ├── hashGenerator.ts
     ├── sleep.ts
-    └── backoff.ts        # retry com backoff exponencial + jitter
+    ├── backoff.ts        # retry com backoff exponencial + jitter
+    └── metrics.ts        # métricas operacionais via EMF (EmfMetrics + NoopMetrics)
 ```
 
 ---
@@ -403,7 +405,8 @@ Código utilitário puramente técnico sem regra de negócio.
 | `hashGenerator.ts` | Gera SHA-256 do payload normalizado do evento |
 | `sleep.ts` | `Promise`-based `setTimeout` para pausas assíncronas |
 | `backoff.ts` | Retry com backoff exponencial + jitter; respeita o Circuit Breaker (não retenta quando `OPEN`) |
-| `circuitBreaker.ts` | Implementação dos estados Closed / Open / Half-Open |
+| `circuitBreaker.ts` | Implementação dos estados Closed / Open / Half-Open; hook `onOpen` opcional |
+| `metrics.ts` | Métricas operacionais via EMF (`EmfMetrics`/`NoopMetrics`), extraídas pelo CloudWatch Logs |
 
 ---
 
@@ -423,9 +426,10 @@ Nenhuma outra camada conhece ou aplica rate limit.
 
 ### 2. Circuit Breaker
 
-- Instância criada no Factory e injetada em `SaaSHttpClient` (registra falhas/sucessos) **e** em `DispatcherWorker` (controla o polling).
+- Instância **única** criada no Factory e injetada em `SaaSHttpClient` (registra falhas/sucessos), em `DispatcherService` (guarda **antes** de adquirir o lock — evita registro `PROCESSING` espúrio) **e** em `DispatcherWorker` (controla o polling).
 - Quando `OPEN`: Worker aplica `sleep` de `CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS` antes de reiniciar o ciclo. Nenhum polling ocorre.
 - Mensagens em-voo quando o circuito abre: rejeitadas sem ACK, retornam à fila pelo Visibility Timeout.
+- Hook `onOpen` (opcional) emite `circuit_breaker_open_total` (ver §8) a cada transição → `OPEN`, mantendo o util desacoplado de métricas.
 
 ---
 
@@ -516,6 +520,24 @@ logger.error({ timestamp, employeeId, flow: 'TERMINATION', status: 'ERROR', erro
 ```
 
 Campos mínimos obrigatórios: `timestamp`, `employeeId`, `flow`, `status`.
+
+---
+
+### 8. Métricas (EMF)
+
+Métricas operacionais (ARCH §20) são emitidas via **EMF (Embedded Metric Format)**: `metrics.count(name)` escreve um JSON com envelope `_aws` no `stdout`; o CloudWatch Logs extrai a métrica automaticamente — modelo **push**, sem `PutMetricData` nem scraping (*pull*). O namespace (`BoticarioSyncHub`) deve ser idêntico ao `local.metrics_namespace` do Terraform (contrato com os alarmes, §21 da ARCH).
+
+- Contrato injetável `IMetrics` (`utils/interfaces/IMetrics.ts`); implementações `EmfMetrics` (produção) e `NoopMetrics` (testes/demo, silenciosa).
+- Injetado **explicitamente** via Factory (sem default) nos pontos que originam as métricas:
+
+| Métrica | Origem | Gatilho |
+|---|---|---|
+| `saas_requests_total` / `_success` / `_failed` | `SaaSHttpClient` | cada request real (após a guarda do circuito) |
+| `circuit_breaker_open_total` | `CircuitBreaker` (hook `onOpen`) | transição → `OPEN` |
+| `employees_processed_total` | `DispatcherService` | evento `COMPLETED` |
+| `idempotency_rejections_total` | `DispatcherService` | `ALREADY_COMPLETED` |
+
+`saas_requests_total` e `saas_requests_failed` contam por **tentativa real**, mantendo a taxa de falha (§21) consistente.
 
 ---
 

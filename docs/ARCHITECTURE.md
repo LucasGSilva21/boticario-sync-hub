@@ -971,6 +971,24 @@ circuit_breaker_open_total
 
 ---
 
+## Emissão (EMF)
+
+As métricas são emitidas pelo `SaaSIntegrationDispatcher` no formato **EMF (Embedded Metric Format)**: cada evento de métrica é um log JSON com o envelope `_aws` escrito no **stdout**. O driver `awslogs` do ECS Fargate entrega esse log ao **CloudWatch Logs**, que **extrai a métrica automaticamente** — sem `PutMetricData`, sem permissão IAM adicional e sem coletor externo.
+
+É um modelo **push** (a aplicação publica e segue) com **extração** feita pelo CloudWatch. **Não é scraping/raspagem** — este seria o modelo *pull* (ex.: Prometheus fazendo *polling* de um endpoint `/metrics`).
+
+As métricas são publicadas no namespace:
+
+```text
+BoticarioSyncHub
+```
+
+Esse namespace é um **contrato com a infraestrutura**: precisa ser idêntico ao `local.metrics_namespace` (`infra/locals.tf`), pois os alarmes (§21) consultam as métricas exatamente nele. A taxa de falha do SaaS, por exemplo, é derivada via *metric math* de `saas_requests_failed / saas_requests_total`.
+
+> `saas_requests_total` e `saas_requests_failed` são contados por **tentativa real** (após a guarda do Circuit Breaker), mantendo a razão da taxa de falha consistente.
+
+---
+
 # 21. Alarmes
 
 CloudWatch Alarms devem ser configurados para monitorar:
