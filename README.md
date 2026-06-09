@@ -146,6 +146,34 @@ Os testes de integração comprovam, com a lógica de produção e providers in-
 
 ---
 
+## 🏗️ Infraestrutura (AWS)
+
+A infraestrutura é **declarativa** (ARCH §2): representada em código e validada com
+`terraform validate` — **sem provisionamento real** nesta PoC. Ela é dividida entre
+duas ferramentas, de forma intencional e **sem duplicar recursos**:
+
+* **Terraform (`/infra`)** — recursos *long-lived*: filas SQS + DLQs, tabela
+  DynamoDB, bucket S3, secret do Secrets Manager, cluster/serviço ECS Fargate do
+  dispatcher (`desired_count = 1`), IAM do dispatcher, alarmes CloudWatch e os
+  parâmetros SSM que servem de ponte.
+* **Serverless Framework (`backend/serverless.yml`)** — *código* das Lambdas e seus
+  event sources: o trigger `s3:ObjectCreated` (ingestão), o API Gateway
+  `POST /api/v1/terminations` (demissão) e o IAM de menor privilégio de cada função.
+
+**Ponte sem drift:** o Terraform é a *fonte única* dos identificadores
+(URLs/ARNs/nomes) e os publica no **SSM Parameter Store**; o `serverless.yml` os
+consome via `${ssm:...}`. Nenhum recurso é recriado entre as duas ferramentas.
+
+O dispatcher roda em container (ECS Fargate): veja [`backend/Dockerfile`](/backend/Dockerfile)
+(multi-stage, Node 24). O CI (`.github/workflows/ci.yml`) roda lint + typecheck +
+testes de backend e frontend e a validação do Terraform — **acionamento manual**
+(`workflow_dispatch`) por se tratar de uma PoC.
+
+> Detalhes da topologia, da fronteira Serverless ↔ Terraform e dos comandos de
+> validação estão em **[`/infra/README.md`](/infra/README.md)**.
+
+---
+
 ## 📖 Documentação Técnica (Fontes da Verdade)
 
 Para entender a fundo as decisões de design e as regras de escrita de código, consulte a nossa pasta `/docs`:
