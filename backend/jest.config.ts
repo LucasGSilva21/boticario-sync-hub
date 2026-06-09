@@ -26,7 +26,8 @@ const config: Config = {
     '!src/types/**', // apenas assinaturas de tipo, sem runtime
     '!src/config/**', // leitura/validação de env
     '!src/functions/**', // entrypoints finos (sem lógica, por contrato)
-    '!src/workers/**/main.ts', // entrypoint fino do worker (sem lógica)
+    '!src/workers/**/main*.ts', // entrypoints finos do worker (main.ts e main.local.ts)
+    '!src/workers/**/demo/**', // orquestração da demo (sem regra de negócio; smoke via start:local)
     '!src/factories/**', // composition root (DI); coberto por testes de integração
   ],
   coverageDirectory: 'coverage',
