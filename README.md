@@ -69,11 +69,40 @@ A demo (`runLocalDemo`) executa uma sequência de **cenários narrados** que com
 ### Outros comandos úteis
 
 ```bash
-npm test               # testes unitários
+npm test               # todos os testes (unit + integração)
 npm run test:coverage  # cobertura (meta: 100%)
 npm run lint           # ESLint
 npm run typecheck      # checagem de tipos (sem emitir)
 ```
+
+---
+
+## 🧪 Testes
+
+A suíte cobre 100% da lógica de negócio e separa os testes por **tipo**, identificado pelo sufixo do arquivo:
+
+| Sufixo | Tipo | O que exercita |
+|---|---|---|
+| `*.test.ts` | **Unitário** | Uma unidade isolada, com dependências mockadas via interfaces. |
+| `*.spec.ts` | **Integração** | A árvore real (Services + Worker) montada na suíte, com Providers/Repositories **in-memory** — sem mocks da lógica de negócio. Determinismo via injeção de relógio/`fetch`/`sleep`. |
+
+```text
+backend/tests/
+├── unit/          -> *.test.ts  (services, providers, repositories, utils…)
+└── integration/   -> *.spec.ts  (dispatcher, ingestion — fluxo ponta a ponta)
+```
+
+A partir de `backend/`:
+
+```bash
+npm test                   # todos os testes (unit + integração)
+npm run test:unit          # apenas unitários  (*.test.ts)
+npm run test:integration   # apenas integração (*.spec.ts)
+npm run test:coverage      # todos, com relatório de cobertura (meta: 100%)
+npm run test:watch         # modo watch
+```
+
+Os testes de integração comprovam, com a lógica de produção e providers in-memory, os mesmos requisitos da demo: priorização de filas, idempotência (*Zero-Read*), retry/backoff, falha definitiva, *Circuit Breaker* (Open → Half-Open → Closed) e recuperação de eventos órfãos (`lockExpiresAt`), além da ingestão de XML válido e o tratamento de XML inválido/malformado.
 
 ---
 
@@ -82,7 +111,7 @@ npm run typecheck      # checagem de tipos (sem emitir)
 Para entender a fundo as decisões de design e as regras de escrita de código, consulte a nossa pasta `/docs`:
 
 1. **[Arquitetura da Solução](/docs/ARCHITECTURE.md):** Contém o desenho macro da topologia AWS, justificativas das escolhas dos componentes, tratamento de falhas (*Circuit Breaker*), idempotência (*Zero-Read Pattern*) e gerenciamento de custos.
-2. **[Guia de Desenvolvimento](/docs/DEVELOPMENT_GUIDE.md):** Define a arquitetura de pastas do backend, responsabilidade das camadas (Services, Providers, Repositories), padrões de logs e comportamento dos testes unitários.
+2. **[Guia de Desenvolvimento](/docs/DEVELOPMENT_GUIDE.md):** Define a arquitetura de pastas do backend, responsabilidade das camadas (Services, Providers, Repositories), padrões de logs e a convenção de testes (unitários `*.test.ts` vs. integração `*.spec.ts`).
 
 ---
 

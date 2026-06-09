@@ -553,18 +553,43 @@ Regras de escrita:
 - Framework: Jest + `ts-jest`.
 - Mocks implementam as interfaces (`IBucketProvider`, `IQueueProvider` etc.) para total isolamento.
 - Mocks para Circuit Breaker e Bottleneck expõem métodos de controle de estado determinístico (ex: `forceOpen()`, `forceFailure(n)`). **Proibido comportamento probabilístico em testes**.
-- Estrutura de diretórios espelha `src/`:
+
+### Convenção de Sufixo (Unitário vs. Integração)
+
+O **tipo** do teste é identificado pelo sufixo do arquivo — não apenas pela pasta:
+
+| Sufixo | Tipo | Característica |
+|---|---|---|
+| `*.test.ts` | **Unitário** | Unidade isolada; dependências mockadas via interfaces (mocks de `jest.fn`). |
+| `*.spec.ts` | **Integração** | Árvore real de Services/Worker montada na própria suíte, com Providers/Repositories **in-memory** (sem mocks da lógica de negócio). Determinismo via injeção de `now`/`fetchFn`/`sleepFn`. |
+
+- Descrições de teste em **inglês declarativo, sem "should"** (ex.: `'drains the termination queue before touching the upsert queue'`).
+- Os testes de integração **não** usam a factory de demo (`makeLocalDispatcherWorker`) nem nada de `workers/dispatcher/demo/` (fora da cobertura): montam a árvore via helper local na própria suíte.
+
+### Estrutura de Diretórios
+
+Espelha `src/`:
 
 ```
 tests/
-├── unit/
+├── unit/                       # *.test.ts
 │   ├── services/
 │   ├── providers/
 │   └── repositories/
-└── integration/
-    ├── dispatcher/
-    └── ingestion/
+└── integration/                # *.spec.ts
+    ├── dispatcher/             # dispatcher.spec.ts
+    └── ingestion/              # ingestion.spec.ts
 ```
+
+### Comandos
+
+| Comando | Escopo |
+|---|---|
+| `npm test` | Todos os testes (unit + integração) |
+| `npm run test:unit` | Apenas `*.test.ts` |
+| `npm run test:integration` | Apenas `*.spec.ts` |
+| `npm run test:coverage` | Todos, com relatório de cobertura (meta global: 100%) |
+| `npm run test:watch` | Modo watch |
 
 ---
 
