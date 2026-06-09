@@ -1140,7 +1140,7 @@ Conforme as premissas do desafio (§2), a solução deve rodar localmente **sem 
 npm run start:local
 ```
 
-Executa `src/workers/dispatcher/main.local.ts`, que usa a factory `makeLocalDispatcherWorker()` — variante da factory de produção que injeta mocks no **mesmo** `DispatcherService` / `DispatcherWorker`.
+Executa `src/workers/dispatcher/main.local.ts` (entrypoint fino), que chama `runLocalDemo()` (`src/workers/dispatcher/demo/`). A orquestração monta, via `makeLocalDispatcherWorker()`, o **mesmo** `DispatcherService` / `DispatcherWorker` de produção com Providers in-memory, e roda uma sequência de cenários narrados. Um `ManualClock` compartilhado pelo Circuit Breaker e pelo `sleep` do worker torna a abertura/recuperação do circuito determinística e instantânea.
 
 ## Substituições
 
@@ -1148,10 +1148,18 @@ Executa `src/workers/dispatcher/main.local.ts`, que usa a factory `makeLocalDisp
 |---|---|---|
 | Amazon SQS (`SqsQueueProvider`) | `InMemoryQueueProvider` | Filas em memória pré-carregadas com eventos de exemplo (termination + upsert) |
 | Secrets Manager (`SecretsManagerProvider`) | `InMemorySecretProvider` | Credenciais fixas de demonstração |
-| API do SaaS (`SaaSHttpClient`) | `StubSaaSClient` | Simula `2xx`/`5xx`/latência de forma determinística para evidenciar backoff e Circuit Breaker |
+| API do SaaS (`fetch` → parceiro) | `SaaSHttpClient` real + `createStubSaaSFetch` (fetch stubado 2xx/5xx/latência) | Não substitui o cliente: injeta um `fetch` determinístico no `SaaSHttpClient` de produção, exercitando backoff, rate limit e a abertura/recuperação do Circuit Breaker (Open → Half-Open → Closed) de forma real e determinística (relógio manual) |
 | DynamoDB (`DynamoSyncStateRepository`) | `InMemorySyncStateRepository` | Estado e idempotência via `Map` em memória |
 
-A demo evidencia, sem nuvem: priorização de filas, rate limit, backoff exponencial, Circuit Breaker e idempotência (Zero-Read).
+A demo (`runLocalDemo`) evidencia, sem nuvem, em cenários narrados sequenciais:
+
+1. **Priorização + retry/backoff** — demissões antes de upserts; falha transitória que recupera.
+2. **Volume + rate limit** — lote de 30 upserts cadenciado a 100 req/s (sem 429).
+3. **Falha definitiva → DLQ** — esgotamento de retries e redrive para a DLQ.
+4. **Circuit Breaker** — 5 falhas consecutivas abrem o circuito; após o reset, half-open → closed.
+5. **Idempotência (Zero-Read)** — reenvio do mesmo evento descartado (`ALREADY_COMPLETED`).
+
+Ao final, imprime um **resumo consolidado** (Sucessos / Erros / Retentativas / Idempotência) no formato dos totalizadores do dashboard.
 
 ---
 

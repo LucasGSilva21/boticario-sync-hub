@@ -65,7 +65,10 @@ src/
 ├── workers/              # Entrypoints do ECS Fargate (main finos)
 │   └── dispatcher/
 │       ├── main.ts
-│       └── main.local.ts # entrypoint da demo local (mocks in-memory)
+│       ├── main.local.ts # entrypoint da demo local (chama runLocalDemo)
+│       └── demo/         # orquestração da demo narrada (fora da cobertura)
+│           ├── ManualClock.ts
+│           └── runLocalDemo.ts
 │
 ├── services/             # Regras de negócio (dependem apenas de interfaces)
 │   ├── interfaces/
@@ -96,7 +99,7 @@ src/
 │   └── inmemory/          # Implementações in-memory para a demo local
 │       ├── InMemoryQueueProvider.ts
 │       ├── InMemorySecretProvider.ts
-│       └── StubSaaSClient.ts
+│       └── createStubSaaSFetch.ts
 │
 ├── repositories/         # Camada de persistência (DynamoDB)
 │   ├── interfaces/
@@ -570,17 +573,18 @@ tests/
 O desafio exige rodar a solução localmente em minutos, **sem LocalStack/Docker e sem AWS real** ("use Mocks/Stubs"). A DI por interfaces viabiliza isso trocando apenas os Providers concretos por implementações in-memory — a lógica de negócio exercitada na demo é idêntica à de produção.
 
 - **Entrypoint:** `src/workers/dispatcher/main.local.ts` (script `npm run start:local`).
-- **Factory:** `makeLocalDispatcherWorker()` injeta as implementações in-memory no **mesmo** `DispatcherService` / `DispatcherWorker` de produção.
+- **Factory:** `makeLocalDispatcherWorker(options)` injeta as implementações in-memory no **mesmo** `DispatcherService` / `DispatcherWorker` de produção, parametrizável por cenário (stub, Circuit Breaker, retries, lock, rate limit, relógio).
+- **Orquestração:** `runLocalDemo()` (`workers/dispatcher/demo/`) roda cenários narrados e imprime um resumo consolidado; o `main.local.ts` apenas o invoca.
 - **Sem `env.ts`:** a factory local usa defaults de demonstração (não exige variáveis de ambiente) — `start:local` roda zero-config.
 
 | Interface | Impl. de produção | Impl. local (demo) |
 |---|---|---|
 | `IQueueProvider` | `SqsQueueProvider` | `InMemoryQueueProvider` (filas em arrays, pré-carregadas com eventos de exemplo) |
 | `ISecretProvider` | `SecretsManagerProvider` | `InMemorySecretProvider` (credenciais fixas de demo) |
-| `ISaaSClient` | `SaaSHttpClient` | `StubSaaSClient` (simula `2xx`/`5xx`/latência para exercitar backoff e Circuit Breaker) |
+| `ISaaSClient` | `SaaSHttpClient` | `SaaSHttpClient` real (não substituído) + `createStubSaaSFetch` — um `fetch` stubado (`2xx`/`5xx`/latência) injetado no cliente de produção para exercitar backoff, rate limit e a abertura/recuperação real do Circuit Breaker (Open → Half-Open → Closed), de forma determinística via relógio manual |
 | `ISyncStateRepository` | `DynamoSyncStateRepository` | `InMemorySyncStateRepository` (`Map` em memória, preserva idempotência) |
 
-O `StubSaaSClient` deve permitir respostas **determinísticas** (ex.: falhar N vezes e depois suceder) para demonstrar retry/backoff e abertura do circuito sem aleatoriedade não-controlada (alinhado à regra de testes determinísticos).
+O `createStubSaaSFetch` produz um `fetch` (tipo `typeof fetch`) com respostas **determinísticas** — `failFirst` faz as primeiras N chamadas retornarem `503`; `latencyMs` adiciona latência por chamada — para demonstrar retry/backoff e abertura do circuito sem aleatoriedade não-controlada (alinhado à regra de testes determinísticos). Diferentemente de substituir o `ISaaSClient`, essa abordagem mantém o `SaaSHttpClient` de produção no caminho. Na demo, um `ManualClock` compartilhado pelo Circuit Breaker e pelo `sleep` do worker permite exercitar a abertura e a recuperação do circuito de forma real e instantânea (sem esperar o reset em tempo real).
 
 ---
 

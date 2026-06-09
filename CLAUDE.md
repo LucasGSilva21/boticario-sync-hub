@@ -110,7 +110,7 @@ Fase 9 — Entrypoints (thin layers)
 Fase 10 — Modo Local / Demo (Mocks in-memory)
   [ ] src/providers/inmemory/InMemoryQueueProvider.ts
   [ ] src/providers/inmemory/InMemorySecretProvider.ts
-  [ ] src/providers/inmemory/StubSaaSClient.ts
+  [ ] src/providers/inmemory/createStubSaaSFetch.ts
   [ ] src/repositories/inmemory/InMemorySyncStateRepository.ts
   [ ] src/factories/makeLocalDispatcherWorker.ts
   [ ] src/workers/dispatcher/main.local.ts
