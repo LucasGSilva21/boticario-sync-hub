@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    /* Base — espelha o rigor do backend (DEVELOPMENT_GUIDE como fonte da verdade) */
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Vite/bundler: o tsc apenas checa tipos, não emite */
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "useDefineForClassFields": true,
+    "allowJs": false,
+    "skipLibCheck": true,
+
+    /* Globais de teste (Vitest) — matchers do jest-dom aumentados no setup */
+    "types": ["vitest/globals"]
+  },
+  "include": ["src"]
+}
