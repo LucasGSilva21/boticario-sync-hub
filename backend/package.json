@@ -11,6 +11,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "jest",
+    "test:unit": "jest '\\.test\\.ts$'",
+    "test:integration": "jest '\\.spec\\.ts$'",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src tests --no-error-on-unmatched-pattern",

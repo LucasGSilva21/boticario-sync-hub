@@ -4,9 +4,10 @@ const config: Config = {
   // Ambiente Node (sem DOM) — Lambdas e worker ECS rodam em Node puro
   testEnvironment: 'node',
 
-  // Todos os testes vivem em /tests, espelhando a estrutura de /src
+  // Todos os testes vivem em /tests, espelhando a estrutura de /src.
+  // Convenção de sufixo: *.test.ts = unitário; *.spec.ts = integração.
   roots: ['<rootDir>/tests'],
-  testMatch: ['**/*.test.ts'],
+  testMatch: ['**/*.test.ts', '**/*.spec.ts'],
 
   // Transpila TS via ts-jest usando o tsconfig do projeto (nodenext → CommonJS).
   // Forma explícita (não-deprecada) recomendada pelo ts-jest 29.
