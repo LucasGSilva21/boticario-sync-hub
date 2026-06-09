@@ -5,6 +5,7 @@ import { SaaSRequestError } from '../errors/SaaSRequestError';
 import type { EmployeeEvent } from '../types/employee.types';
 import type { ICircuitBreaker } from '../utils/interfaces/ICircuitBreaker';
 import type { ILogger } from '../utils/interfaces/ILogger';
+import type { IMetrics } from '../utils/interfaces/IMetrics';
 import type { ISaaSClient } from './interfaces/ISaaSClient';
 import type { ISecretProvider } from './interfaces/ISecretProvider';
 
@@ -27,6 +28,7 @@ export class SaaSHttpClient implements ISaaSClient {
     private readonly secretProvider: ISecretProvider,
     private readonly circuitBreaker: ICircuitBreaker,
     private readonly logger: ILogger,
+    private readonly metrics: IMetrics,
     rateLimitPerSecond: number,
     private readonly maxRetryAttempts: number,
     private readonly backoffBaseMs: number,
@@ -61,12 +63,15 @@ export class SaaSHttpClient implements ISaaSClient {
     if (this.circuitBreaker.isOpen()) {
       throw new CircuitOpenError();
     }
+    this.metrics.count('saas_requests_total');
     try {
       await this.limiter.schedule(() => this.doRequest(event));
       this.circuitBreaker.recordSuccess();
+      this.metrics.count('saas_requests_success');
     } catch (error) {
       if (isTransientFailure(error)) {
         this.circuitBreaker.recordFailure();
+        this.metrics.count('saas_requests_failed');
       }
       throw error;
     }

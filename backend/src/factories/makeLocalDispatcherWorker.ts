@@ -12,6 +12,7 @@ import {
 import { InMemorySyncStateRepository } from '../repositories/inmemory/InMemorySyncStateRepository';
 import { ManualClock } from '../workers/dispatcher/demo/ManualClock';
 import { logger as defaultLogger } from '../utils/logger';
+import { noopMetrics } from '../utils/metrics';
 import type { ILogger } from '../utils/interfaces/ILogger';
 
 export const TERMINATION_QUEUE = 'termination-queue';
@@ -71,6 +72,7 @@ export function makeLocalDispatcherWorker(
     secretProvider,
     circuitBreaker,
     logger,
+    noopMetrics,
     rateLimitPerSecond,
     maxRetryAttempts,
     backoffBaseMs,
@@ -86,6 +88,7 @@ export function makeLocalDispatcherWorker(
     saasClient,
     circuitBreaker,
     logger,
+    noopMetrics,
   );
 
   const worker = new DispatcherWorker(

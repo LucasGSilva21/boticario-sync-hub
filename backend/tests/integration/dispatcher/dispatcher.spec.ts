@@ -6,6 +6,7 @@ import { CircuitBreaker } from '../../../src/utils/circuitBreaker';
 import { InMemoryQueueProvider } from '../../../src/providers/inmemory/InMemoryQueueProvider';
 import { InMemorySecretProvider } from '../../../src/providers/inmemory/InMemorySecretProvider';
 import { InMemorySyncStateRepository } from '../../../src/repositories/inmemory/InMemorySyncStateRepository';
+import { noopMetrics } from '../../../src/utils/metrics';
 import { generateHash } from '../../../src/utils/hashGenerator';
 import type {
   EmployeeUpsertEvent,
@@ -92,6 +93,7 @@ function buildDispatcher(opts: BuildOptions): {
     secretProvider,
     circuitBreaker,
     logger,
+    noopMetrics,
     1000,
     maxRetryAttempts,
     backoffBaseMs,
@@ -107,6 +109,7 @@ function buildDispatcher(opts: BuildOptions): {
     saasClient,
     circuitBreaker,
     logger,
+    noopMetrics,
   );
   const worker = new DispatcherWorker(
     dispatcher,

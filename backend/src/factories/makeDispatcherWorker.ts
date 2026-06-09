@@ -8,6 +8,7 @@ import { SecretsManagerProvider } from '../providers/SecretsManagerProvider';
 import { DynamoSyncStateRepository } from '../repositories/DynamoSyncStateRepository';
 import { CircuitBreaker } from '../utils/circuitBreaker';
 import { logger } from '../utils/logger';
+import { metrics } from '../utils/metrics';
 
 export function makeDispatcherWorker(): DispatcherWorker {
   const secretProvider = new SecretsManagerProvider(
@@ -19,11 +20,14 @@ export function makeDispatcherWorker(): DispatcherWorker {
   const circuitBreaker = new CircuitBreaker(
     env.circuitBreakerResetTimeoutSeconds,
     env.circuitBreakerFailureThreshold,
+    Date.now,
+    () => metrics.count('circuit_breaker_open_total'),
   );
   const saasClient = new SaaSHttpClient(
     secretProvider,
     circuitBreaker,
     logger,
+    metrics,
     env.saasRateLimitPerSecond,
     env.saasMaxRetryAttempts,
     env.saasBackoffBaseMs,
@@ -37,6 +41,7 @@ export function makeDispatcherWorker(): DispatcherWorker {
     saasClient,
     circuitBreaker,
     logger,
+    metrics,
   );
   return new DispatcherWorker(
     dispatcherService,

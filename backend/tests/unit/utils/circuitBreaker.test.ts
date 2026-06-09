@@ -54,4 +54,17 @@ describe('CircuitBreaker', () => {
     cb.recordFailure(); // HALF_OPEN -> OPEN
     expect(cb.isOpen()).toBe(true);
   });
+
+  it('invokes the onOpen hook on each transition to OPEN', () => {
+    let current = 0;
+    const onOpen = jest.fn<void, []>();
+    const cb = new CircuitBreaker(10, 2, () => current, onOpen);
+    cb.recordFailure();
+    cb.recordFailure(); // threshold -> OPEN (1st)
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    current += 10_000;
+    expect(cb.isOpen()).toBe(false); // HALF_OPEN
+    cb.recordFailure(); // HALF_OPEN -> OPEN (2nd)
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
 });

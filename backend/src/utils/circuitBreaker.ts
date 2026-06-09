@@ -11,6 +11,9 @@ export class CircuitBreaker implements ICircuitBreaker {
     private readonly resetTimeoutSeconds: number,
     private readonly failureThreshold: number,
     private readonly now: () => number = Date.now,
+    // Notificação de transição → OPEN. Mantém o util desacoplado de métricas:
+    // o factory liga isto à emissão de `circuit_breaker_open_total` (§20).
+    private readonly onOpen?: () => void,
   ) {}
 
   isOpen(): boolean {
@@ -45,5 +48,6 @@ export class CircuitBreaker implements ICircuitBreaker {
     this.state = 'OPEN';
     this.openedAt = this.now();
     this.failureCount = 0;
+    this.onOpen?.();
   }
 }
