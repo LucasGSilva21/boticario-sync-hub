@@ -615,6 +615,61 @@ O `createStubSaaSFetch` produz um `fetch` (tipo `typeof fetch`) com respostas **
 
 ## Frontend (Dashboard)
 
-- Stack: React + Vite + TypeScript + Tailwind CSS.
-- Escopo: tela única, demonstrativo.
-- **Nenhuma chamada HTTP real.** Todos os dados vêm de `/frontend/src/mocks/`.
+Dashboard demonstrativo de observabilidade — tela única, **sem nenhuma chamada
+HTTP real**: 100% dos dados vêm de `frontend/src/mocks/` (ARCH §25).
+
+### Stack
+
+| Camada | Tecnologia |
+|---|---|
+| Build/Dev | Vite 7 |
+| UI | React 19 (componentes funcionais + hooks) |
+| Linguagem | TypeScript strict (mesmos rigores do backend) |
+| Estilo | Tailwind CSS 3 (sem lib de gráficos — cards/tabelas/barras CSS) |
+| Testes | Vitest + React Testing Library (jsdom) |
+| Lint/Format | ESLint flat + Prettier (config espelhada do backend) |
+
+### Estrutura (`frontend/src`)
+
+```
+src/
+├── types/dashboard.types.ts   # contratos (espelham employee/sync-state + métricas/eventos)
+├── mocks/                      # ÚNICA origem de dados (summary, metrics, events, queues, circuitBreaker)
+├── lib/                        # lógica pura (format, deriveMetrics) — 100% testada
+├── hooks/useDashboardData.ts   # agrega os mocks num snapshot único
+├── components/                 # apresentação (SummaryCards, MetricsGrid, CircuitBreakerStatus,
+│   └── ui/Card.tsx             #   QueueDepth, EventsTable, StatusBadge) + primitivo Card
+├── App.tsx                     # composição da tela única
+└── main.tsx                    # entrypoint React (fino)
+```
+
+### O que o dashboard exibe
+
+- **Totalizadores** (Sucessos/Erros/Retentativas/Idempotência) no formato do
+  `printSummary` da demo (`runLocalDemo`).
+- **Métricas operacionais** (ARCH §20) com nomes canônicos.
+- **Circuit Breaker** (Closed/Open/Half-Open — §15) e **profundidade das filas**
+  (termination prioritária vs upsert — §8).
+- **Eventos recentes** no formato de log estruturado (§19): `timestamp`,
+  `employeeId`, `flow`, `status`, `error?`.
+
+Os números dos mocks são coerentes entre si e foram capturados da execução real
+de `npm run start:local` (backend).
+
+### Testes
+
+- **Testes colocados** ao lado de cada arquivo (`*.test.ts`/`*.test.tsx`).
+- Descrições em **inglês declarativo, sem "should"**; comentários de código em português.
+- Cobertura: **100% em `lib/` e `hooks/`**; meta global ~90% (scaffolding e dados
+  ficam fora via `coverage.exclude`).
+
+### Comandos (a partir de `frontend/`)
+
+| Comando | Escopo |
+|---|---|
+| `npm run dev` | Servidor de desenvolvimento (Vite) |
+| `npm run build` | Typecheck + build de produção |
+| `npm test` | Suíte Vitest |
+| `npm run test:coverage` | Suíte com relatório de cobertura |
+| `npm run typecheck` | Checagem de tipos (sem emitir) |
+| `npm run lint` / `npm run format:check` | ESLint / Prettier |

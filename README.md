@@ -77,6 +77,46 @@ npm run typecheck      # checagem de tipos (sem emitir)
 
 ---
 
+## 🖥️ Rodando o Dashboard (Frontend)
+
+Dashboard demonstrativo de observabilidade em **React + Vite + Tailwind**, tela
+única e **100% com dados mockados** (sem AWS, sem backend, sem rede). Os
+totalizadores e métricas espelham a execução real da demo do backend.
+
+### Pré-requisitos
+* Node.js LTS
+
+### Passos
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Abra a URL exibida pelo Vite (por padrão `http://localhost:5173`).
+
+O dashboard exibe:
+* **Totalizadores** — Sucessos / Erros / Retentativas / Idempotência (formato do `printSummary`).
+* **Métricas operacionais** (ARCH §20) com nomes canônicos.
+* **Circuit Breaker** (Closed / Open / Half-Open) e **profundidade das filas** (termination prioritária vs. upsert).
+* **Eventos recentes** no formato de log estruturado (ARCH §19).
+
+### Outros comandos úteis
+
+```bash
+npm test               # testes (Vitest + Testing Library)
+npm run test:coverage  # cobertura (100% em lib/ e hooks/; ~90% global)
+npm run build          # typecheck + build de produção
+npm run lint           # ESLint
+npm run typecheck      # checagem de tipos (sem emitir)
+```
+
+> Os dados vêm de `frontend/src/mocks/` e foram capturados da execução real de
+> `npm run start:local` (backend), mantendo os números coerentes entre demo e dashboard.
+
+---
+
 ## 🧪 Testes
 
 A suíte cobre 100% da lógica de negócio e separa os testes por **tipo**, identificado pelo sufixo do arquivo:
