@@ -4,6 +4,7 @@ frameworkVersion: '3'
 
 plugins:
   - serverless-plugin-typescript
+  - serverless-iam-roles-per-function
 
 provider:
   name: aws
@@ -11,19 +12,51 @@ provider:
   region: ${opt:region, 'us-east-1'}
   stage: ${opt:stage, 'dev'}
 
+custom:
+  # Prefixo dos SSM params publicados pelo Terraform (ponte /infra -> Serverless).
+  # FONTE ÚNICA dos identificadores: nenhum ARN/URL é hardcoded aqui.
+  ssmPrefix: /boticario-sync-hub/${sls:stage}
+
 functions:
   # Fluxo Batch — ingestão de XML disparada por upload no bucket S3
   employeeIngestion:
     handler: src/functions/employeeIngestion.handler
+    # env MÍNIMO: só o que o factory de ingestão acessa (env.ts lazy).
+    environment:
+      SQS_WAIT_TIME_SECONDS: '20'
+      EMPLOYEE_UPSERT_QUEUE_URL: ${ssm:${self:custom.ssmPrefix}/sqs/upsert-queue-url}
+    # IAM menor privilégio (§22): ler o XML do bucket + publicar na upsert-queue
+    # + entregar falhas à ingestion-dlq (via Lambda Destinations).
+    iamRoleStatements:
+      - Effect: Allow
+        Action: s3:GetObject
+        Resource: ${ssm:${self:custom.ssmPrefix}/s3/batch-bucket-arn}/*
+      - Effect: Allow
+        Action: sqs:SendMessage
+        Resource: ${ssm:${self:custom.ssmPrefix}/sqs/upsert-queue-arn}
+      - Effect: Allow
+        Action: sqs:SendMessage
+        Resource: ${ssm:${self:custom.ssmPrefix}/sqs/ingestion-dlq-arn}
     events:
       - s3:
           bucket: employee-sync-batch-files
           event: s3:ObjectCreated:*
           existing: true # bucket é infra long-lived (Terraform), não criado aqui
+    # Falha de parse (§5/§18) -> employee-ingestion-dlq como destino on-failure.
+    destinations:
+      onFailure: ${ssm:${self:custom.ssmPrefix}/sqs/ingestion-dlq-arn}
 
   # Fluxo Imediato — desligamentos recebidos via API Gateway
   immediateTermination:
     handler: src/functions/immediateTermination.handler
+    environment:
+      SQS_WAIT_TIME_SECONDS: '20'
+      EMPLOYEE_TERMINATION_QUEUE_URL: ${ssm:${self:custom.ssmPrefix}/sqs/termination-queue-url}
+    # IAM menor privilégio (§22): apenas publicar na termination-queue.
+    iamRoleStatements:
+      - Effect: Allow
+        Action: sqs:SendMessage
+        Resource: ${ssm:${self:custom.ssmPrefix}/sqs/termination-queue-arn}
     events:
       - httpApi:
           method: POST

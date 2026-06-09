@@ -1,0 +1,39 @@
+# terraform.tfvars.example
+# Exemplo de valores. Copie para `terraform.tfvars` (gitignored) e ajuste por
+# ambiente. A maioria dos tunables operacionais já tem default vindo da tabela do
+# CLAUDE.md — só sobrescreva se precisar. O que normalmente muda por ambiente é
+# identidade, tags e rede do dispatcher.
+
+# --- Identidade / região ---
+project    = "boticario-sync-hub"
+stage      = "dev"
+aws_region = "us-east-1"
+
+# --- Tags adicionais (mescladas às tags base Project/Stage/ManagedBy) ---
+tags = {
+  Owner      = "plataforma-integracao"
+  CostCenter = "engenharia"
+}
+
+# --- Dispatcher (ECS Fargate) ---
+# Imagem real do container (substitui o placeholder quando houver Dockerfile/registry).
+# dispatcher_image  = "123456789012.dkr.ecr.us-east-1.amazonaws.com/saas-integration-dispatcher:latest"
+# dispatcher_cpu    = 256
+# dispatcher_memory = 512
+
+# Rede da task (entrada por ambiente — não há VPC neste /infra).
+dispatcher_subnet_ids         = ["subnet-aaaa1111", "subnet-bbbb2222"]
+dispatcher_security_group_ids = ["sg-cccc3333"]
+dispatcher_assign_public_ip   = false
+
+# --- Tunables operacionais (descomente só para sobrescrever o default) ---
+# saas_rate_limit_per_second            = 100
+# saas_max_retry_attempts               = 3
+# saas_backoff_base_ms                  = 200
+# processing_lock_timeout_seconds       = 240
+# secrets_cache_ttl_seconds             = 300
+# circuit_breaker_reset_timeout_seconds = 30
+# circuit_breaker_failure_threshold     = 5
+# sqs_wait_time_seconds                 = 20
+# sqs_visibility_timeout_seconds        = 240
+# sqs_max_receive_count                 = 5

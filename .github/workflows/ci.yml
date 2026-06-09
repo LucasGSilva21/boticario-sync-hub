@@ -1,0 +1,80 @@
+name: CI
+
+# Lint + typecheck + testes do backend e frontend, e validação do Terraform.
+# Trigger MANUAL por enquanto (PoC): roda só quando acionado pela aba Actions
+# (Run workflow), evitando execução automática a cada push/PR. Para reativar o
+# CI automático, basta adicionar de volta os gatilhos `push`/`pull_request`.
+on:
+  workflow_dispatch:
+
+# Cancela execuções antigas do mesmo ref (economiza runner).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Menor privilégio: o CI só precisa ler o repositório.
+permissions:
+  contents: read
+
+jobs:
+  # Backend e frontend compartilham os mesmos passos (mesma toolchain Node).
+  node:
+    name: ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [backend, frontend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # paridade com o ambiente de desenvolvimento
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test (coverage)
+        run: npm run test:coverage
+
+      - name: Build
+        run: npm run build
+
+  # Infra declarativa: formatação + consistência do Terraform (sem apply, §2).
+  infra:
+    name: infra (terraform)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8 # mesma versão usada localmente
+          terraform_wrapper: false
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Init (sem backend remoto)
+        run: terraform init -backend=false
+
+      - name: Validate
+        run: terraform validate
