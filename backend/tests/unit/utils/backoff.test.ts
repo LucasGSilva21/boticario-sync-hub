@@ -1,4 +1,4 @@
-import { withBackoff } from '../../../src/utils/backoff';
+import { withBackoff, type BackoffRetryInfo } from '../../../src/utils/backoff';
 
 describe('withBackoff', () => {
   beforeEach(() => {
@@ -69,5 +69,48 @@ describe('withBackoff', () => {
     // 1st retry: 100*2^0 + 0.5*100 = 150 ; 2nd retry: 100*2^1 + 0.5*100 = 250
     expect(setTimeoutSpy).toHaveBeenNthCalledWith(1, expect.any(Function), 150);
     expect(setTimeoutSpy).toHaveBeenNthCalledWith(2, expect.any(Function), 250);
+  });
+
+  it('invokes onRetry before each retry with attempt, delay and error', async () => {
+    const err1 = new Error('1');
+    const err2 = new Error('2');
+    const op = jest
+      .fn<Promise<string>, []>()
+      .mockRejectedValueOnce(err1)
+      .mockRejectedValueOnce(err2)
+      .mockResolvedValueOnce('ok');
+    const onRetry = jest.fn<void, [BackoffRetryInfo]>();
+    const promise = withBackoff(op, {
+      maxAttempts: 3,
+      baseMs: 100,
+      random: () => 0.5,
+      onRetry,
+    });
+    await jest.runAllTimersAsync();
+    await promise;
+    expect(onRetry).toHaveBeenCalledTimes(2);
+    // 1st retry: 100*2^0 + 0.5*100 = 150 ; 2nd retry: 100*2^1 + 0.5*100 = 250
+    expect(onRetry).toHaveBeenNthCalledWith(1, {
+      attempt: 1,
+      nextDelayMs: 150,
+      error: err1,
+    });
+    expect(onRetry).toHaveBeenNthCalledWith(2, {
+      attempt: 2,
+      nextDelayMs: 250,
+      error: err2,
+    });
+  });
+
+  it('does not invoke onRetry for the attempt that exhausts maxAttempts', async () => {
+    const op = jest
+      .fn<Promise<never>, []>()
+      .mockRejectedValue(new Error('boom'));
+    const onRetry = jest.fn<void, [BackoffRetryInfo]>();
+    const promise = withBackoff(op, { maxAttempts: 2, baseMs: 50, onRetry });
+    const assertion = expect(promise).rejects.toThrow('boom');
+    await jest.runAllTimersAsync();
+    await assertion;
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });

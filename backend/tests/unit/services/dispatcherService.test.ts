@@ -61,7 +61,7 @@ describe('DispatcherService', () => {
   });
 
   it('ACKs without sending when the event is already completed', async () => {
-    const { service, idempotency, saasClient } = makeService();
+    const { service, idempotency, saasClient, logger } = makeService();
     idempotency.tryAcquire.mockResolvedValue({
       acquired: false,
       reason: 'ALREADY_COMPLETED',
@@ -69,10 +69,16 @@ describe('DispatcherService', () => {
     const result = await service.process(event);
     expect(result).toBe('ACK');
     expect(saasClient.sendEvent).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith({
+      employeeId: '1',
+      flow: 'UPSERT',
+      status: 'SKIPPED',
+      reason: 'ALREADY_COMPLETED',
+    });
   });
 
   it('RETRYs without sending when another consumer holds the lock', async () => {
-    const { service, idempotency, saasClient } = makeService();
+    const { service, idempotency, saasClient, logger } = makeService();
     idempotency.tryAcquire.mockResolvedValue({
       acquired: false,
       reason: 'LOCK_ACTIVE',
@@ -80,6 +86,12 @@ describe('DispatcherService', () => {
     const result = await service.process(event);
     expect(result).toBe('RETRY');
     expect(saasClient.sendEvent).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith({
+      employeeId: '1',
+      flow: 'UPSERT',
+      status: 'SKIPPED',
+      reason: 'LOCK_ACTIVE',
+    });
   });
 
   it('RETRYs without marking failed when the circuit is open', async () => {

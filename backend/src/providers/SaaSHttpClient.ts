@@ -4,6 +4,7 @@ import { CircuitOpenError } from '../errors/CircuitOpenError';
 import { SaaSRequestError } from '../errors/SaaSRequestError';
 import type { EmployeeEvent } from '../types/employee.types';
 import type { ICircuitBreaker } from '../utils/interfaces/ICircuitBreaker';
+import type { ILogger } from '../utils/interfaces/ILogger';
 import type { ISaaSClient } from './interfaces/ISaaSClient';
 import type { ISecretProvider } from './interfaces/ISecretProvider';
 
@@ -25,6 +26,7 @@ export class SaaSHttpClient implements ISaaSClient {
   constructor(
     private readonly secretProvider: ISecretProvider,
     private readonly circuitBreaker: ICircuitBreaker,
+    private readonly logger: ILogger,
     rateLimitPerSecond: number,
     private readonly maxRetryAttempts: number,
     private readonly backoffBaseMs: number,
@@ -41,6 +43,17 @@ export class SaaSHttpClient implements ISaaSClient {
       maxAttempts: this.maxRetryAttempts,
       baseMs: this.backoffBaseMs,
       shouldRetry: isTransientFailure,
+      onRetry: ({ attempt, nextDelayMs, error }) => {
+        this.logger.warn({
+          employeeId: event.employeeId,
+          flow: event.eventType,
+          status: 'RETRY',
+          attempt,
+          maxAttempts: this.maxRetryAttempts,
+          nextDelayMs,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
     });
   }
 

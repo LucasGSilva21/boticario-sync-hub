@@ -1,10 +1,17 @@
 import { sleep } from './sleep';
 
+export interface BackoffRetryInfo {
+  attempt: number;
+  nextDelayMs: number;
+  error: unknown;
+}
+
 export interface BackoffOptions {
   maxAttempts: number;
   baseMs: number;
   shouldRetry?: (error: unknown) => boolean;
   random?: () => number;
+  onRetry?: (info: BackoffRetryInfo) => void;
 }
 
 export async function withBackoff<T>(
@@ -16,6 +23,7 @@ export async function withBackoff<T>(
     baseMs,
     shouldRetry = () => true,
     random = Math.random,
+    onRetry,
   } = options;
 
   const run = async (attempt: number): Promise<T> => {
@@ -25,7 +33,9 @@ export async function withBackoff<T>(
       if (attempt >= maxAttempts || !shouldRetry(error)) {
         throw error;
       }
-      await sleep(baseMs * 2 ** (attempt - 1) + random() * baseMs);
+      const nextDelayMs = baseMs * 2 ** (attempt - 1) + random() * baseMs;
+      onRetry?.({ attempt, nextDelayMs, error });
+      await sleep(nextDelayMs);
       return run(attempt + 1);
     }
   };

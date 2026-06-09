@@ -20,6 +20,12 @@ export class DispatcherService implements IDispatcherService {
 
     if (!acquired.acquired) {
       // COMPLETED → já enviado, descarta. LOCK_ACTIVE → outro consumidor detém o lock.
+      this.logger.info({
+        employeeId: event.employeeId,
+        flow: event.eventType,
+        status: 'SKIPPED',
+        reason: acquired.reason,
+      });
       return acquired.reason === 'ALREADY_COMPLETED' ? 'ACK' : 'RETRY';
     }
 
