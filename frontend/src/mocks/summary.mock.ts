@@ -4,7 +4,7 @@ import type { SummaryTotals } from '../types/dashboard.types';
 // runLocalDemo/printSummary). Mantidos fixos: o dashboard é demonstrativo (ARCH §25).
 export const summaryMock: SummaryTotals = {
   successes: 42, // SUCCESS
-  errors: 9, // ERROR
-  retries: 8, // RETRY
+  errors: 8, // ERROR
+  retries: 9, // RETRY
   idempotency: 1, // SKIPPED
 };

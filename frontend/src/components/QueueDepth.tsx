@@ -32,7 +32,7 @@ export function QueueDepth({ queues }: QueueDepthProps): React.JSX.Element {
   const max = Math.max(queues.termination, queues.upsert, 1);
 
   return (
-    <Card title="Profundidade das filas">
+    <Card title="Mensagens nas filas">
       <ul className="space-y-4">
         {rows.map((row) => (
           <li key={row.name}>

@@ -16,7 +16,7 @@ describe('App', () => {
       screen.getByRole('heading', { name: 'Circuit Breaker' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Profundidade das filas' }),
+      screen.getByRole('heading', { name: 'Mensagens nas filas' }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: 'Métricas operacionais' }),
