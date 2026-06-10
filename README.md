@@ -180,6 +180,7 @@ Para entender a fundo as decisões de design e as regras de escrita de código, 
 
 1. **[Arquitetura da Solução](/docs/ARCHITECTURE.md):** Contém o desenho macro da topologia AWS, justificativas das escolhas dos componentes, tratamento de falhas (*Circuit Breaker*), idempotência (*Zero-Read Pattern*) e gerenciamento de custos.
 2. **[Guia de Desenvolvimento](/docs/DEVELOPMENT_GUIDE.md):** Define a arquitetura de pastas do backend, responsabilidade das camadas (Services, Providers, Repositories), padrões de logs e a convenção de testes (unitários `*.test.ts` vs. integração `*.spec.ts`).
+3. **[Trade-offs e Evoluções](/docs/TRADEOFFS.md):** Decisões com custo consciente — o que foi escolhido de propósito, o que se abriu mão em troca, e o gatilho/caminho de cada evolução futura (dispatcher único, paralelismo, SQS Standard, prioridade, multi-SaaS, ingestão em escala).
 
 ---
 

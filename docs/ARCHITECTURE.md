@@ -1172,6 +1172,12 @@ Duplicações são tratadas pela camada de idempotência.
 
 ---
 
+## Trade-offs e Evoluções
+
+As decisões com custo consciente (o que foi escolhido de propósito, o que se abriu mão em troca, e o gatilho/caminho de cada evolução futura) estão registradas em [`TRADEOFFS.md`](./TRADEOFFS.md).
+
+---
+
 # 25. Execução Local e Estratégia de Mocks
 
 Conforme as premissas do desafio (§2), a solução deve rodar localmente **sem AWS real, LocalStack ou Docker complexo**, usando Mocks/Stubs. A arquitetura de DI por interfaces torna isso direto: troca-se apenas a camada de Providers concretos por implementações in-memory, preservando 100% da lógica de negócio.
