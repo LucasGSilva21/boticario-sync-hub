@@ -43,6 +43,15 @@ export class InMemoryQueueProvider implements IQueueProvider {
     return Promise.resolve();
   }
 
+  sendMessageBatch(queueUrl: string, bodies: string[]): Promise<void> {
+    const queue = this.queues.get(queueUrl) ?? [];
+    for (const body of bodies) {
+      queue.push({ body, receiptHandle: randomUUID() });
+    }
+    this.queues.set(queueUrl, queue);
+    return Promise.resolve();
+  }
+
   deleteMessage(queueUrl: string, receiptHandle: string): Promise<void> {
     const queue = this.queues.get(queueUrl) ?? [];
     this.queues.set(

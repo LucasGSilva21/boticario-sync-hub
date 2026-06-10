@@ -35,6 +35,15 @@ describe('InMemoryQueueProvider', () => {
     expect(received[0]?.body).toBe('hello');
   });
 
+  it('sends a batch whose bodies all become receivable in order', async () => {
+    const provider = new InMemoryQueueProvider();
+    await provider.sendMessageBatch('q', ['a', 'b', 'c']);
+
+    const received = await provider.receiveMessages('q', 10);
+
+    expect(received.map((m) => m.body)).toEqual(['a', 'b', 'c']);
+  });
+
   it('deletes a message by receipt handle', async () => {
     const provider = new InMemoryQueueProvider();
     provider.seed('q', ['a']);

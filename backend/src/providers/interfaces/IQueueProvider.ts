@@ -9,5 +9,6 @@ export interface IQueueProvider {
     maxMessages: number,
   ): Promise<IQueueMessage[]>;
   sendMessage(queueUrl: string, body: string): Promise<void>;
+  sendMessageBatch(queueUrl: string, bodies: string[]): Promise<void>;
   deleteMessage(queueUrl: string, receiptHandle: string): Promise<void>;
 }

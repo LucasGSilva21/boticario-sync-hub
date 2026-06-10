@@ -29,6 +29,7 @@ type Deps = {
   queue: {
     receiveMessages: jest.Mock<Promise<IQueueMessage[]>, [string, number]>;
     sendMessage: jest.Mock<Promise<void>, [string, string]>;
+    sendMessageBatch: jest.Mock<Promise<void>, [string, string[]]>;
     deleteMessage: jest.Mock<Promise<void>, [string, string]>;
   };
   circuitBreaker: {
@@ -53,6 +54,7 @@ function makeDeps(): Deps {
     queue: {
       receiveMessages: jest.fn<Promise<IQueueMessage[]>, [string, number]>(),
       sendMessage: jest.fn<Promise<void>, [string, string]>(),
+      sendMessageBatch: jest.fn<Promise<void>, [string, string[]]>(),
       deleteMessage: jest.fn<Promise<void>, [string, string]>(),
     },
     circuitBreaker: {

@@ -25,6 +25,7 @@ type Deps = {
   queue: {
     receiveMessages: jest.Mock<Promise<never[]>, [string, number]>;
     sendMessage: jest.Mock<Promise<void>, [string, string]>;
+    sendMessageBatch: jest.Mock<Promise<void>, [string, string[]]>;
     deleteMessage: jest.Mock<Promise<void>, [string, string]>;
   };
   logger: {
@@ -50,6 +51,7 @@ function makeDeps(employees: ParsedEmployee[]): Deps {
     queue: {
       receiveMessages: jest.fn<Promise<never[]>, [string, number]>(),
       sendMessage: jest.fn<Promise<void>, [string, string]>(),
+      sendMessageBatch: jest.fn<Promise<void>, [string, string[]]>(),
       deleteMessage: jest.fn<Promise<void>, [string, string]>(),
     },
     logger: {
@@ -61,7 +63,7 @@ function makeDeps(employees: ParsedEmployee[]): Deps {
 }
 
 describe('XmlProcessingService', () => {
-  it('publishes one upsert event per parsed employee and logs the count', async () => {
+  it('publishes the parsed employees as a single SQS batch and logs the count', async () => {
     const deps = makeDeps([
       {
         employeeId: '1',
@@ -85,26 +87,22 @@ describe('XmlProcessingService', () => {
       'bucket',
       'employees file.xml',
     );
-    expect(deps.queue.sendMessage).toHaveBeenNthCalledWith(
-      1,
-      'upsert-url',
+    // Lote único (< 10): uma só chamada com os dois eventos, em ordem.
+    expect(deps.queue.sendMessageBatch).toHaveBeenCalledTimes(1);
+    expect(deps.queue.sendMessageBatch).toHaveBeenCalledWith('upsert-url', [
       JSON.stringify({
         employeeId: '1',
         eventType: 'UPSERT',
         eventTimestamp: fixedNow.toISOString(),
         data: { name: 'Ana', department: 'Tech', position: 'Dev' },
       }),
-    );
-    expect(deps.queue.sendMessage).toHaveBeenNthCalledWith(
-      2,
-      'upsert-url',
       JSON.stringify({
         employeeId: '2',
         eventType: 'UPSERT',
         eventTimestamp: fixedNow.toISOString(),
         data: { name: 'Bob', department: 'Sales', position: 'Rep' },
       }),
-    );
+    ]);
     expect(deps.logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
         flow: 'UPSERT',
@@ -113,6 +111,30 @@ describe('XmlProcessingService', () => {
         key: 'employees file.xml',
         count: 2,
       }),
+    );
+  });
+
+  it('flushes a full batch mid-stream and a partial batch at the end', async () => {
+    // 11 colaboradores -> flush de 10 no meio + flush de 1 no fim (2 chamadas).
+    const employees = Array.from({ length: 11 }, (_, i) => ({
+      employeeId: String(i + 1),
+      data: { name: `N${i}`, department: 'Tech', position: 'Dev' },
+    }));
+    const deps = makeDeps(employees);
+    const service = new XmlProcessingService(
+      deps.bucket,
+      deps.parser,
+      deps.queue,
+      'upsert-url',
+      deps.logger,
+      () => fixedNow,
+    );
+    await service.handle(s3Event('big.xml'));
+    expect(deps.queue.sendMessageBatch).toHaveBeenCalledTimes(2);
+    expect(deps.queue.sendMessageBatch.mock.calls[0]?.[1]).toHaveLength(10);
+    expect(deps.queue.sendMessageBatch.mock.calls[1]?.[1]).toHaveLength(1);
+    expect(deps.logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ count: 11 }),
     );
   });
 
@@ -127,7 +149,7 @@ describe('XmlProcessingService', () => {
       () => fixedNow,
     );
     await service.handle(s3Event('empty.xml'));
-    expect(deps.queue.sendMessage).not.toHaveBeenCalled();
+    expect(deps.queue.sendMessageBatch).not.toHaveBeenCalled();
     expect(deps.logger.info).toHaveBeenCalledWith(
       expect.objectContaining({ count: 0 }),
     );
@@ -148,6 +170,6 @@ describe('XmlProcessingService', () => {
       deps.logger,
     );
     await service.handle(s3Event('file.xml'));
-    expect(deps.queue.sendMessage).toHaveBeenCalledTimes(1);
+    expect(deps.queue.sendMessageBatch).toHaveBeenCalledTimes(1);
   });
 });
