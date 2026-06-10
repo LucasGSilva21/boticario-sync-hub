@@ -30,8 +30,7 @@ export class EmfMetrics implements IMetrics {
 }
 
 export class NoopMetrics implements IMetrics {
-  count(): void {
-  }
+  count(): void {}
 }
 
 export const metrics: IMetrics = new EmfMetrics();
