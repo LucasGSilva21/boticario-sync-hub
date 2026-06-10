@@ -60,7 +60,8 @@ export class SaaSHttpClient implements ISaaSClient {
   }
 
   private async attempt(event: EmployeeEvent): Promise<void> {
-    if (this.circuitBreaker.isOpen()) {
+    // Gate por tentativa: no half-open, só a sonda passa (single-trial).
+    if (!this.circuitBreaker.tryProceed()) {
       throw new CircuitOpenError();
     }
     this.metrics.count('saas_requests_total');

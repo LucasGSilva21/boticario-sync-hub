@@ -11,6 +11,7 @@ type MockedIdempotency = {
 
 type MockedCircuitBreaker = {
   isOpen: jest.Mock<boolean, []>;
+  tryProceed: jest.Mock<boolean, []>;
   recordSuccess: jest.Mock<void, []>;
   recordFailure: jest.Mock<void, []>;
 };
@@ -40,6 +41,7 @@ function makeService(): Mocks {
   // Fechado por padrão: o caminho feliz não passa pela guarda do circuito.
   const circuitBreaker: MockedCircuitBreaker = {
     isOpen: jest.fn<boolean, []>().mockReturnValue(false),
+    tryProceed: jest.fn<boolean, []>().mockReturnValue(true),
     recordSuccess: jest.fn<void, []>(),
     recordFailure: jest.fn<void, []>(),
   };

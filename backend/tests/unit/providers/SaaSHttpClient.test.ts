@@ -7,6 +7,7 @@ import type { LogFields } from '../../../src/utils/interfaces/ILogger';
 
 type MockedCircuitBreaker = {
   isOpen: jest.Mock<boolean, []>;
+  tryProceed: jest.Mock<boolean, []>;
   recordSuccess: jest.Mock<void, []>;
   recordFailure: jest.Mock<void, []>;
 };
@@ -14,6 +15,8 @@ type MockedCircuitBreaker = {
 function makeCircuitBreaker(open: boolean): MockedCircuitBreaker {
   return {
     isOpen: jest.fn<boolean, []>().mockReturnValue(open),
+    // Aberto → a tentativa não prossegue; fechado/half-open com sonda → prossegue.
+    tryProceed: jest.fn<boolean, []>().mockReturnValue(!open),
     recordSuccess: jest.fn<void, []>(),
     recordFailure: jest.fn<void, []>(),
   };

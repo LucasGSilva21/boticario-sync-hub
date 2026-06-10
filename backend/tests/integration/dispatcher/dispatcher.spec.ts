@@ -226,39 +226,46 @@ describe('dispatcher integration', () => {
     );
   });
 
-  it('opens the circuit after consecutive failures and recovers once the SaaS heals', async () => {
+  it('half-opens to a single probe after the cooldown and recovers once the SaaS heals', async () => {
     const fetchFn = makeFetch()
       .mockResolvedValueOnce(new Response(null, { status: 503 }))
       .mockResolvedValueOnce(new Response(null, { status: 503 }))
       .mockResolvedValueOnce(new Response(null, { status: 503 }))
       .mockResolvedValue(new Response(null, { status: 200 }));
-    const { worker, queue, circuitBreaker } = buildDispatcher({
+    const { worker, queue, circuitBreaker, clock } = buildDispatcher({
       fetchFn,
       maxRetryAttempts: 1,
       failureThreshold: 3,
       resetSeconds: 30,
+      lockTimeoutSeconds: 5,
     });
     queue.seed(
       TERMINATION_QUEUE,
       ['t1', 't2', 't3'].map((id) => JSON.stringify(terminationEvent(id))),
     );
-
-    // Ciclo 1: três falhas seguidas abrem o circuito; nada é deletado.
+    // Ciclo 1: três falhas concorrentes abrem o circuito; nada é deletado.
     await worker.runOnce();
     expect(fetchFn).toHaveBeenCalledTimes(3);
     expect(circuitBreaker.isOpen()).toBe(true);
     expect(await queue.receiveMessages(TERMINATION_QUEUE, 10)).toHaveLength(3);
-
-    // Ciclo 2: circuito aberto suspende o polling (sleepFn avança o relógio).
+    // Ciclo 2: circuito aberto suspende o polling (sleepFn avança o relógio +30s).
     await worker.runOnce();
     expect(fetchFn).toHaveBeenCalledTimes(3);
     expect(await queue.receiveMessages(TERMINATION_QUEUE, 10)).toHaveLength(3);
-
-    // Ciclo 3: passado o reset, half-open → closed; a fila drena.
+    // Ciclo 3: passado o reset, o HALF_OPEN admite UMA sonda (single-trial). Mesmo
+    // com o lote concorrente, só 1 request vai ao SaaS — ela tem sucesso e fecha o
+    // circuito. As outras 2 são barradas (CircuitOpenError) e voltam à fila, mas
+    // como adquiriram o lock antes do gate, ficam em PROCESSING (lock transitório).
+    await worker.runOnce();
+    expect(fetchFn).toHaveBeenCalledTimes(4); // apenas a sonda
+    expect(circuitBreaker.isOpen()).toBe(false);
+    expect(await queue.receiveMessages(TERMINATION_QUEUE, 10)).toHaveLength(2);
+    // Expira o lock transitório das 2 barradas (recuperação de órfão via lockExpiresAt).
+    clock.advance(6_000);
+    // Ciclo 4: circuito fechado e locks expirados → as 2 restantes drenam.
     await worker.runOnce();
     expect(fetchFn).toHaveBeenCalledTimes(6);
     expect(await queue.receiveMessages(TERMINATION_QUEUE, 10)).toHaveLength(0);
-    expect(circuitBreaker.isOpen()).toBe(false);
   });
 
   it('blocks an event under an active lock and recovers it once the lock expires', async () => {

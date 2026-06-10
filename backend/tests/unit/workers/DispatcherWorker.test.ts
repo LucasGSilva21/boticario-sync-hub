@@ -33,6 +33,7 @@ type Deps = {
   };
   circuitBreaker: {
     isOpen: jest.Mock<boolean, []>;
+    tryProceed: jest.Mock<boolean, []>;
     recordSuccess: jest.Mock<void, []>;
     recordFailure: jest.Mock<void, []>;
   };
@@ -56,6 +57,7 @@ function makeDeps(): Deps {
     },
     circuitBreaker: {
       isOpen: jest.fn<boolean, []>(),
+      tryProceed: jest.fn<boolean, []>().mockReturnValue(true),
       recordSuccess: jest.fn<void, []>(),
       recordFailure: jest.fn<void, []>(),
     },
@@ -145,6 +147,34 @@ describe('DispatcherWorker', () => {
     expect(deps.queue.deleteMessage).not.toHaveBeenCalled();
     expect(deps.logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'ERROR' }),
+    );
+  });
+
+  it('isolates a failed message without dropping the rest of the batch', async () => {
+    const deps = makeDeps();
+    deps.circuitBreaker.isOpen.mockReturnValue(false);
+    deps.queue.receiveMessages.mockResolvedValueOnce([
+      { body: JSON.stringify(termEvent), receiptHandle: 'a' },
+      { body: JSON.stringify(termEvent), receiptHandle: 'b' },
+    ]);
+    // process rejeita (ex.: erro inesperado no DynamoDB): allSettled isola a falha.
+    deps.dispatcher.process
+      .mockRejectedValueOnce(new Error('dynamo down'))
+      .mockRejectedValueOnce('weird');
+    await makeWorker(deps).runOnce();
+    expect(deps.dispatcher.process).toHaveBeenCalledTimes(2);
+    expect(deps.queue.deleteMessage).not.toHaveBeenCalled();
+    expect(deps.logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'ERROR',
+        error: 'Failed to settle message: dynamo down',
+      }),
+    );
+    expect(deps.logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'ERROR',
+        error: 'Failed to settle message: weird',
+      }),
     );
   });
 

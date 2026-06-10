@@ -75,13 +75,35 @@ export class DispatcherWorker {
     queueUrl: string,
     messages: IQueueMessage[],
   ): Promise<void> {
-    for (const message of messages) {
-      const result = await this.handleMessage(message);
-      if (result === 'ACK') {
-        await this.queue.deleteMessage(queueUrl, message.receiptHandle);
+    // Lote processado CONCORRENTEMENTE: o Bottleneck (no SaaSHttpClient) cadencia
+    // os 100 req/s globalmente; aqui só exploramos a concorrência de I/O do Node
+    // para manter requests suficientes em voo e aproximar o limite — sem sair de
+    // uma única instância. `allSettled` isola a falha de cada mensagem: uma
+    // rejeição (ex.: erro inesperado no DynamoDB/SQS) não derruba as irmãs do
+    // lote nem o loop do worker.
+    const outcomes = await Promise.allSettled(
+      messages.map((message) => this.processAndAck(queueUrl, message)),
+    );
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') {
+        const reason: unknown = outcome.reason;
+        this.logger.error({
+          status: 'ERROR',
+          error: `Failed to settle message: ${reason instanceof Error ? reason.message : String(reason)}`,
+        });
       }
-      // RETRY → não deleta; volta à fila pelo Visibility Timeout.
     }
+  }
+
+  private async processAndAck(
+    queueUrl: string,
+    message: IQueueMessage,
+  ): Promise<void> {
+    const result = await this.handleMessage(message);
+    if (result === 'ACK') {
+      await this.queue.deleteMessage(queueUrl, message.receiptHandle);
+    }
+    // RETRY → não deleta; volta à fila pelo Visibility Timeout.
   }
 
   private async handleMessage(message: IQueueMessage): Promise<DispatchResult> {
