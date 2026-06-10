@@ -249,6 +249,18 @@ Bottleneck
 
 Não devem existir múltiplos consumidores compartilhando esse limite.
 
+---
+
+## Concorrência e Vazão (Instância Única)
+
+Instância única **não** significa processamento serial. O dispatcher processa cada lote do SQS de forma **concorrente** (`Promise.allSettled`), explorando a concorrência de I/O do Node: várias requisições ao SaaS ficam em voo ao mesmo tempo, dentro do **mesmo** processo e do **mesmo** limitador `Bottleneck`.
+
+- O `Bottleneck` (`minTime` derivado de `SAAS_RATE_LIMIT_PER_SECOND`) garante o teto de 100 req/s **independentemente da concorrência** — a concorrência não fura o limite, apenas permite *alcançá-lo* apesar da latência do parceiro.
+- Serial, a vazão seria ≈ `1 / latência`; com o lote concorrente ela tende ao teto do rate limit. A concorrência necessária para saturar o limite segue a Lei de Little: `rate_limit × latência` (ex.: 100 req/s × 100 ms = 10 em voo).
+- `Promise.allSettled` isola a falha de cada mensagem do lote: uma rejeição inesperada (ex.: erro de DynamoDB) não derruba as mensagens irmãs nem o loop do worker.
+
+> Hoje o lote concorrente é limitado a `MAX_MESSAGES` (10) por ciclo — suficiente para saturar 100 req/s em latências de até ~100 ms. Latências maiores demandariam *pipelining* (mais de um lote em voo), registrado como evolução futura.
+
 # 9. Estado Operacional e Idempotência
 
 A solução utiliza uma única tabela DynamoDB chamada:
@@ -663,9 +675,9 @@ Nenhuma mensagem é consumida.
 
 ### Half-Open
 
-Após período de recuperação, novas tentativas são realizadas.
+Após o período de recuperação, o circuito admite **uma única tentativa de sonda** (*single-trial*): apenas a primeira requisição passa; as demais de um lote concorrente são barradas até a sonda resolver.
 
-Se forem bem-sucedidas:
+Se a sonda for bem-sucedida:
 
 ```text
 Half-Open → Closed
@@ -676,6 +688,8 @@ Caso contrário:
 ```text
 Half-Open → Open
 ```
+
+Admitir uma só sonda evita que, num lote concorrente, dezenas de requisições atinjam de uma vez um parceiro recém-recuperado (*thundering herd*).
 
 ---
 
@@ -697,6 +711,16 @@ Caso o circuito mude para o estado **Open** enquanto um lote de mensagens já ti
 - As requisições pendentes desse lote para o SaaS serão imediatamente bloqueadas pelo Circuit Breaker.
 - A aplicação rejeitará a mensagem no código sem confirmar o recebimento (sem enviar o ACK), fazendo com que ela retorne nativamente para a fila após a expiração do *Visibility Timeout*.
 - Isso garante que a instabilidade repentina do parceiro não queime de forma injusta o contador de tentativas (`maxReceiveCount`) das mensagens que já estavam no meio do caminho.
+
+---
+
+## Sonda Única no Half-Open (Single-Trial)
+
+Como o lote é processado de forma **concorrente** (§8), a recuperação do circuito usa **single-trial**: no estado Half-Open, o gate consumível do Circuit Breaker (`tryProceed`) admite **uma** sonda; as demais requisições do lote recebem `CircuitOpenError` e retornam à fila sem ACK.
+
+A sonda é consumida no momento do **envio real** ao SaaS (em `SaaSHttpClient`), **não** na aquisição do lock de idempotência. Essa escolha evita "gastar" a sonda — e travar o circuito — caso o evento curto-circuite por idempotência (`ALREADY_COMPLETED` / `LOCK_ACTIVE`) sem chegar a chamar o parceiro.
+
+Como consequência, as mensagens **não-sonda** do lote podem adquirir um **lock transitório** (`PROCESSING`) antes de serem barradas. Esse lock é recuperado pelo mesmo mecanismo de `lockExpiresAt` (§13): o efeito é limitado ao lote em recuperação e auto-recuperável.
 
 ## Política de Retentativa em Camadas
 

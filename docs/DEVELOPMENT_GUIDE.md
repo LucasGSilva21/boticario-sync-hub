@@ -426,7 +426,9 @@ Nenhuma outra camada conhece ou aplica rate limit.
 
 ### 2. Circuit Breaker
 
-- Instância **única** criada no Factory e injetada em `SaaSHttpClient` (registra falhas/sucessos), em `DispatcherService` (guarda **antes** de adquirir o lock — evita registro `PROCESSING` espúrio) **e** em `DispatcherWorker` (controla o polling).
+- Instância **única** criada no Factory e injetada em `SaaSHttpClient` (gate por tentativa + registra falhas/sucessos), em `DispatcherService` (guarda `isOpen` antes de adquirir o lock) **e** em `DispatcherWorker` (peek `isOpen` controla o polling).
+- **Dois métodos com papéis distintos:** `isOpen()` é um **peek** (não consome estado), usado pelo worker e pela guarda do serviço; `tryProceed()` é um **gate consumível por tentativa** que, no `HALF_OPEN`, admite **uma única sonda** (*single-trial*) — as demais recebem `CircuitOpenError`, evitando rajada concorrente (*thundering herd*) contra um parceiro recém-recuperado.
+- A sonda é consumida no **envio real** (`SaaSHttpClient.attempt`), **não** na aquisição do lock — evita travar o circuito se o evento curto-circuitar por idempotência. Custo aceito: lock transitório das mensagens não-sonda, recuperado por `lockExpiresAt`.
 - Quando `OPEN`: Worker aplica `sleep` de `CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS` antes de reiniciar o ciclo. Nenhum polling ocorre.
 - Mensagens em-voo quando o circuito abre: rejeitadas sem ACK, retornam à fila pelo Visibility Timeout.
 - Hook `onOpen` (opcional) emite `circuit_breaker_open_total` (ver §8) a cada transição → `OPEN`, mantendo o util desacoplado de métricas.
@@ -477,6 +479,8 @@ while (true) {
   await sleep(5_000); // filas vazias
 }
 ```
+
+> **Processamento concorrente do lote:** `processMessages` despacha as mensagens do lote em paralelo via `Promise.allSettled`, explorando a concorrência de I/O do Node — o `Bottleneck` (no `SaaSHttpClient`) mantém o teto global de 100 req/s independentemente da concorrência. `allSettled` **isola a falha de cada mensagem**: uma rejeição inesperada (ex.: erro de DynamoDB) não derruba as irmãs do lote nem o loop. A **prioridade é preservada no nível do lote** — o lote de `termination` é drenado antes do de `upsert`. Instância única ≠ serial: a concorrência permite *alcançar* os 100 req/s apesar da latência do parceiro (ver ARCH §8).
 
 ---
 
