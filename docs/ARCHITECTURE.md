@@ -111,11 +111,13 @@ Para evitar consumo excessivo de memória, o XML deve ser processado via **strea
 
 O arquivo não deve ser carregado integralmente em memória. **Não** se utiliza `fast-xml-parser` nesta etapa, pois ele desserializa o documento inteiro em memória (não é SAX/stream).
 
-Cada colaborador encontrado no XML deve ser transformado em um evento individual e publicado na fila:
+Cada colaborador encontrado no XML é transformado em um evento individual e publicado na fila:
 
 ```text
 employee-upsert-queue
 ```
+
+A publicação é feita **em lotes** (via `sendMessageBatch`), drenando um buffer pequeno de eventos a cada N colaboradores — uma ida à fila por lote em vez de uma por colaborador. Isso reduz em ~10× o número de chamadas para ~30.000 registros (de ~30k para ~3k), sem aumentar a memória: o buffer é limitado (O(1)). O tamanho do lote no processador é um limite de memória; o teto técnico por chamada (SQS = 10) fica encapsulado no provider de fila.
 
 Essa estratégia elimina riscos de Out Of Memory mesmo para lotes contendo dezenas de milhares de registros.
 

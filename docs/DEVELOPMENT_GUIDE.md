@@ -303,6 +303,10 @@ export interface IQueueMessage {
 export interface IQueueProvider {
   receiveMessages(queueUrl: string, maxMessages: number): Promise<IQueueMessage[]>;
   sendMessage(queueUrl: string, body: string): Promise<void>;
+  // Publica vários corpos numa só ida à fila. O caller (ex.: ingestão) decide o
+  // tamanho do lote por MEMÓRIA; o limite técnico por chamada (SQS = 10) é do
+  // provider, que fatia internamente. O service não conhece esse número.
+  sendMessageBatch(queueUrl: string, bodies: string[]): Promise<void>;
   deleteMessage(queueUrl: string, receiptHandle: string): Promise<void>;
 }
 ```
@@ -505,8 +509,10 @@ while (true) {
 - Biblioteca: `saxes` — parser SAX **evented/streaming real** (JS puro, tipos nativos).
 - O `Body` do `GetObjectCommand` (S3 SDK v3) é um `Readable` consumido **incrementalmente** pelo `saxes`.
 - O arquivo S3 **não deve ser carregado integralmente em memória**.
-- Cada colaborador é montado a partir dos eventos SAX (`opentag` / `text` / `closetag`) e, ao fechar `</employee>`, imediatamente publicado no SQS como evento individual.
-- Complexidade de memória: O(1) — independente do tamanho do arquivo.
+- Cada colaborador é montado a partir dos eventos SAX (`opentag` / `text` / `closetag`); ao fechar `</employee>`, vira um evento `UPSERT` individual acumulado num buffer.
+- O buffer é drenado de `PUBLISH_BATCH_SIZE` em `PUBLISH_BATCH_SIZE` via `IQueueProvider.sendMessageBatch` — **1 ida à fila por lote, não por colaborador** (corta ~30k chamadas para ~3k). O tamanho do lote é um limite de **memória** do service; quantas mensagens cabem por chamada é do provider (ver mapeamento de interfaces).
+- Complexidade de memória: O(1) — o buffer nunca passa de `PUBLISH_BATCH_SIZE`, independente do tamanho do arquivo.
+- Se o parser lançar no meio do arquivo, o buffer ainda não publicado é descartado e a ingestão inteira vai à DLQ — **sem publicação parcial** (evita duplicar no reprocesso).
 - **Proibido `fast-xml-parser` na ingestão:** ele desserializa o documento inteiro em memória (não é SAX/stream) e inviabiliza lotes grandes.
 
 ---
