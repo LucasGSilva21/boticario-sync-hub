@@ -112,9 +112,10 @@ async function scenarioVolumeAndRateLimit(tally: ILogger): Promise<void> {
     'Lote de upserts cadenciado a 100 req/s (Bottleneck), sem estourar 429.',
   );
   const total = 30;
+  const rateLimitPerSecond = 100;
   const d = makeLocalDispatcherWorker({
     logger: tally,
-    rateLimitPerSecond: 100,
+    rateLimitPerSecond,
   });
   seedUpserts(
     d,
@@ -125,9 +126,10 @@ async function scenarioVolumeAndRateLimit(tally: ILogger): Promise<void> {
   const startedAt = Date.now();
   await drain(d, 100);
   const elapsedMs = Date.now() - startedAt;
-  const rps = Math.round((total / elapsedMs) * 1000);
+  const minTimeMs = Math.ceil(1000 / rateLimitPerSecond);
+  const rps = Math.round((total / (elapsedMs + minTimeMs)) * 1000);
   console.log(
-    `  → ${total} eventos enviados em ${elapsedMs}ms (~${rps} req/s; limite 100/s)`,
+    `  → ${total} eventos enviados em ${elapsedMs}ms (~${rps} req/s sustentado; limite ${rateLimitPerSecond}/s)`,
   );
 }
 
